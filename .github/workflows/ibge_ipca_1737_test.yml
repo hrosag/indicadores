@@ -1,4 +1,4 @@
-name: IBGE SIDRA - IPCA 1737 - controle (dez/2025) - gerar XLSX
+name: IBGE SIDRA - IPCA 1737 - ingest Supabase (controle)
 
 on:
   workflow_dispatch:
@@ -7,11 +7,9 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -20,12 +18,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run fetch (control)
+      - name: Ingest to Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          python src/sidra_to_xlsx.py datasets/ibge_ipca_1737.yml
-
-      - name: Upload XLSX artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ipca_1737_control_202512_xlsx
-          path: output/*.xlsx
+          python src/ingest_sidra_to_supabase.py datasets/ibge_ipca_1737.yml
