@@ -1,4 +1,4 @@
-name: IBGE SIDRA - IPCA 1737 - gerar XLSX
+name: IBGE SIDRA - IPCA 1737 - controle (dez/2025) - gerar XLSX
 
 on:
   workflow_dispatch:
@@ -20,12 +20,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run fetch
+      - name: Run fetch (control)
         run: |
-          python src/sidra_to_xlsx.py
+          python src/sidra_to_xlsx.py datasets/ibge_ipca_1737.yml
 
       - name: Upload XLSX artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ipca_1737_xlsx
+          name: ipca_1737_control_202512_xlsx
           path: output/*.xlsx
