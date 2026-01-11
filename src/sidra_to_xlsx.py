@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 
 import pandas as pd
@@ -34,29 +35,30 @@ def fetch_payload(url: str) -> tuple[str, str]:
 
 def parse_payload(text: str) -> pd.DataFrame:
     t = text.lstrip()
+
     # JSON
     if t.startswith("[") or t.startswith("{"):
         try:
             return pd.read_json(pd.io.common.StringIO(text))
         except Exception:
             pass
-    # XML (caso comum do SIDRA)
-    df = pd.read_xml(text, xpath=".//ValorDescritoPorSuasDimensoes")
-    return df
+
+    # XML (SIDRA)
+    return pd.read_xml(text, xpath=".//ValorDescritoPorSuasDimensoes")
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
-    # remove a primeira linha “cabeçalho” (quando existir)
+    # Remove a primeira linha “cabeçalho”, quando existir
     if "D1C" in df.columns:
         df = df[~df["D1C"].astype(str).str.contains(r"\(Código\)", regex=True)].copy()
 
-    # normaliza período se existir D3C = YYYYMM
+    # Normaliza período se existir D3C = YYYYMM
     if "D3C" in df.columns:
         s = df["D3C"].astype(str).str.strip()
         df["period_ym"] = s.where(s.str.match(r"^\d{6}$"), other=pd.NA)
         df["period_ym"] = df["period_ym"].str.slice(0, 4) + "-" + df["period_ym"].str.slice(4, 6)
 
-    # valor numérico
+    # Valor numérico
     if "V" in df.columns:
         df["value"] = pd.to_numeric(df["V"], errors="coerce")
 
@@ -64,14 +66,16 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
-    job = load_job("datasets/ibge_ipca_1737.yml")
+    dataset_path = sys.argv[1] if len(sys.argv) > 1 else "datasets/ibge_ipca_1737.yml"
+
+    job = load_job(dataset_path)
     text, content_type = fetch_payload(job.url)
-    df = parse_payload(text)
-    df = clean(df)
+    df = clean(parse_payload(text))
 
     meta = pd.DataFrame(
         {
             "name": [job.name],
+            "dataset_path": [dataset_path],
             "url": [job.url],
             "content_type": [content_type],
             "rows": [len(df)],
