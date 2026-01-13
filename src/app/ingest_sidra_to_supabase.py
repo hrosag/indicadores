@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import math
+import numbers
 import os
 import re
 from dataclasses import dataclass
@@ -125,6 +127,14 @@ def to_records(df: pd.DataFrame, source_url: str) -> list[dict[str, Any]]:
     return out.to_dict(orient="records")
 
 
+def sanitize_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    for rec in records:
+        for k, v in rec.items():
+            if isinstance(v, numbers.Real) and not math.isfinite(float(v)):
+                rec[k] = None
+    return records
+
+
 def upsert_supabase(table: str, records: list[dict[str, Any]]) -> None:
     supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
     key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -141,6 +151,7 @@ def upsert_supabase(table: str, records: list[dict[str, Any]]) -> None:
     batch = 500
     for i in range(0, len(records), batch):
         chunk = records[i : i + batch]
+        chunk = sanitize_records(chunk)
         r = requests.post(endpoint, headers=headers, json=chunk, timeout=120)
         r.raise_for_status()
 
@@ -176,6 +187,7 @@ def main() -> None:
         target_url = with_period(job.url, period)
         df, _content_type = fetch_sidra(target_url)
         records = to_records(df, source_url=target_url)
+        records = sanitize_records(records)
         if not records:
             raise RuntimeError("Sem registros retornados pela API SIDRA.")
         upsert_supabase("ipca_1737_raw", records)
@@ -199,6 +211,7 @@ def main() -> None:
             target_url = with_period(job.url, period)
             df, _content_type = fetch_sidra(target_url)
             records = to_records(df, source_url=target_url)
+            records = sanitize_records(records)
             if not records:
                 raise RuntimeError("Sem registros retornados pela API SIDRA.")
             upsert_supabase("ipca_1737_raw", records)
