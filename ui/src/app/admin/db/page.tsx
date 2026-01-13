@@ -4,12 +4,15 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 
+type IngestAction = "initial" | "current";
+
 export default function AdminDbPage() {
   const router = useRouter();
   const [ibgeOpen, setIbgeOpen] = useState(true);
   const [ipcaOpen, setIpcaOpen] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingInitial, setLoadingInitial] = useState(false);
+  const [loadingCurrent, setLoadingCurrent] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -39,13 +42,18 @@ export default function AdminDbPage() {
     };
   }, [router]);
 
-  const runIngest = async () => {
+  const runIngest = async (action: IngestAction) => {
     setMsg(null);
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
     if (!token) return router.push("/admin/login");
 
-    setLoading(true);
+    if (action === "initial") {
+      setLoadingInitial(true);
+    } else {
+      setLoadingCurrent(true);
+    }
+
     try {
       const r = await fetch("/api/admin/ingest/dispatch", {
         method: "POST",
@@ -54,8 +62,8 @@ export default function AdminDbPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          dataset: "ibge_ipca_1737_monthly",
-          params: { from: "2000-01", to: "2025-12" },
+          dataset: "ibge_ipca_1737",
+          action,
         }),
       });
 
@@ -66,7 +74,8 @@ export default function AdminDbPage() {
     } catch {
       setMsg("Erro ao conectar com o servidor.");
     } finally {
-      setLoading(false);
+      setLoadingInitial(false);
+      setLoadingCurrent(false);
     }
   };
 
@@ -108,19 +117,35 @@ export default function AdminDbPage() {
             {ipcaOpen && (
               <div style={{ paddingLeft: 12, display: "grid", gap: 10 }}>
                 <button
-                  onClick={runIngest}
-                  disabled={loading}
+                  onClick={() => runIngest("initial")}
+                  disabled={loadingInitial}
                   style={{
                     padding: "10px 12px",
                     borderRadius: 10,
                     border: "1px solid #222",
-                    background: loading ? "#444" : "#222",
+                    background: loadingInitial ? "#444" : "#222",
                     color: "#fff",
                     fontWeight: 700,
                     cursor: "pointer",
                   }}
                 >
-                  {loading ? "Rodando..." : "Rodar Ingest"}
+                  {loadingInitial ? "Rodando..." : "Carga inicial (histórico)"}
+                </button>
+
+                <button
+                  onClick={() => runIngest("current")}
+                  disabled={loadingCurrent}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #222",
+                    background: loadingCurrent ? "#444" : "#222",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {loadingCurrent ? "Rodando..." : "Atualizar mês atual"}
                 </button>
 
                 {msg && <div style={{ fontSize: 13, color: "#444" }}>{msg}</div>}

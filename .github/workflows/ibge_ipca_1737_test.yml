@@ -2,6 +2,17 @@ name: IBGE SIDRA - IPCA 1737 - ingest Supabase (controle)
 
 on:
   workflow_dispatch:
+    inputs:
+      dataset:
+        description: "Dataset logical name"
+        required: true
+        default: "ibge_ipca_1737"
+        type: string
+      action:
+        description: "initial = full load, current = last period only"
+        required: true
+        type: choice
+        options: [initial, current]
 
 jobs:
   run:
@@ -23,4 +34,4 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          python src/app/ingest_sidra_to_supabase.py datasets/ibge_ipca_1737.yml
+          python src/app/ingest_sidra_to_supabase.py --dataset "${{ inputs.dataset }}" --action "${{ inputs.action }}" --config "datasets/ibge_ipca_1737.yml"
