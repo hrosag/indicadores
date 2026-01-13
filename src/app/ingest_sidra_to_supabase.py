@@ -10,6 +10,8 @@ from typing import Any
 
 import pandas as pd
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import yaml
 
 
@@ -25,6 +27,28 @@ def load_job(path: str) -> Job:
     return Job(name=str(cfg["name"]), url=str(cfg["url"]))
 
 
+def build_http_session() -> requests.Session:
+    # Retry para timeouts/5xx/429 comuns no SIDRA durante cargas longas.
+    retry = Retry(
+        total=8,
+        connect=8,
+        read=8,
+        status=8,
+        backoff_factor=1.2,  # 0s, ~1.2s, ~2.4s, ~4.8s, ...
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(["GET"]),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=20, pool_maxsize=20)
+    s = requests.Session()
+    s.mount("https://", adapter)
+    s.mount("http://", adapter)
+    return s
+
+
+HTTP = build_http_session()
+
+
 def with_period(url: str, period: str) -> str:
     if "/p/" not in url:
         raise ValueError("URL SIDRA sem segmento /p/ para período.")
@@ -33,7 +57,8 @@ def with_period(url: str, period: str) -> str:
 
 def fetch_sidra(url: str) -> tuple[pd.DataFrame, str]:
     headers = {"Accept": "application/json, text/xml;q=0.9, */*;q=0.8"}
-    r = requests.get(url, headers=headers, timeout=60)
+    # timeout=(connect, read)
+    r = HTTP.get(url, headers=headers, timeout=(20, 180))
     r.raise_for_status()
     content_type = r.headers.get("Content-Type", "")
     text = r.text
