@@ -9,6 +9,8 @@ const githubOwner = process.env.GITHUB_OWNER;
 const githubRepo = process.env.GITHUB_REPO;
 const githubWorkflow = process.env.GITHUB_WORKFLOW_FILE;
 
+const allowedActions = new Set(["initial", "current"]);
+
 export async function POST(request: Request) {
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json({ error: "Supabase env não configurado." }, { status: 500 });
@@ -47,7 +49,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
   }
 
-  let payload: { dataset?: string; params?: Record<string, string> } = {};
+  let payload: { dataset?: string; action?: string } = {};
 
   try {
     payload = await request.json();
@@ -55,11 +57,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Payload inválido." }, { status: 400 });
   }
 
+  if (!payload.dataset || !payload.action) {
+    return NextResponse.json({ error: "Dataset ou action ausente." }, { status: 400 });
+  }
+
+  if (!allowedActions.has(payload.action)) {
+    return NextResponse.json({ error: "Action inválida." }, { status: 400 });
+  }
+
   const { data: jobData, error: jobError } = await supabase
     .from("ingest_jobs")
     .insert({
       dataset: payload.dataset,
-      params: payload.params,
+      params: { action: payload.action },
       status: "queued",
       requested_by: userData.user.id,
     })
@@ -81,6 +91,10 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         ref: process.env.GITHUB_REF ?? "main",
+        inputs: {
+          dataset: payload.dataset,
+          action: payload.action,
+        },
       }),
     }
   );

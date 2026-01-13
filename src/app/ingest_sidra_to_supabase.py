@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import os
-import sys
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,6 +21,12 @@ def load_job(path: str) -> Job:
     with open(path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     return Job(name=str(cfg["name"]), url=str(cfg["url"]))
+
+
+def with_period(url: str, period: str) -> str:
+    if "/p/" not in url:
+        raise ValueError("URL SIDRA sem segmento /p/ para período.")
+    return re.sub(r"/p/[^/]+", f"/p/{period}", url)
 
 
 def fetch_sidra(url: str) -> tuple[pd.DataFrame, str]:
@@ -44,6 +51,45 @@ def fetch_sidra(url: str) -> tuple[pd.DataFrame, str]:
         df["V"] = pd.to_numeric(df["V"], errors="coerce")
 
     return df, content_type
+
+
+def max_period(df: pd.DataFrame) -> str:
+    if "D3C" not in df.columns:
+        raise RuntimeError("Resposta SIDRA sem coluna D3C para período.")
+    periods = pd.to_numeric(df["D3C"], errors="coerce").dropna().astype(int)
+    if periods.empty:
+        raise RuntimeError("Nenhum período válido encontrado em D3C.")
+    return str(periods.max())
+
+
+def period_from_url(url: str) -> str:
+    match = re.search(r"/p/(\d{6})", url)
+    if not match:
+        raise RuntimeError("Não foi possível extrair período da URL base.")
+    return match.group(1)
+
+
+def next_period(period: str) -> str:
+    year = int(period[:4])
+    month = int(period[4:])
+    if month < 1 or month > 12:
+        raise ValueError(f"Período inválido: {period}")
+    if month == 12:
+        return f"{year + 1}01"
+    return f"{year}{month + 1:02d}"
+
+
+def build_periods(first_period: str, last_period: str) -> list[str]:
+    periods = []
+    current = first_period
+    while True:
+        periods.append(current)
+        if current == last_period:
+            break
+        current = next_period(current)
+        if len(periods) > 2000:
+            raise RuntimeError("Intervalo de períodos excedeu limite esperado.")
+    return periods
 
 
 def to_records(df: pd.DataFrame, source_url: str) -> list[dict[str, Any]]:
@@ -83,7 +129,7 @@ def upsert_supabase(table: str, records: list[dict[str, Any]]) -> None:
     supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
     key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
-    endpoint = f"{supabase_url}/rest/v1/{table}"
+    endpoint = f"{supabase_url}/rest/v1/{table}?on_conflict=d1c,d2c,d3c"
     headers = {
         "apikey": key,
         "Authorization": f"Bearer {key}",
@@ -99,18 +145,72 @@ def upsert_supabase(table: str, records: list[dict[str, Any]]) -> None:
         r.raise_for_status()
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Ingest SIDRA -> Supabase")
+    parser.add_argument("--dataset", required=True, help="Dataset logical name")
+    parser.add_argument(
+        "--action",
+        required=True,
+        choices=["initial", "current"],
+        help="initial = full load, current = last period only",
+    )
+    parser.add_argument("--config", required=True, help="Path to dataset YAML")
+    return parser.parse_args()
+
+
 def main() -> None:
-    dataset_path = sys.argv[1] if len(sys.argv) > 1 else "datasets/ibge_ipca_1737.yml"
-    job = load_job(dataset_path)
+    args = parse_args()
+    job = load_job(args.config)
 
-    df, _content_type = fetch_sidra(job.url)
-    records = to_records(df, source_url=job.url)
+    total_records = 0
 
-    if not records:
-        raise RuntimeError("Sem registros retornados pela API SIDRA.")
+    if args.action == "current":
+        period = None
+        try:
+            last_url = with_period(job.url, "last")
+            df_last, _content_type = fetch_sidra(last_url)
+            period = max_period(df_last)
+        except (requests.RequestException, RuntimeError, ValueError):
+            period = period_from_url(job.url)
 
-    upsert_supabase("ipca_1737_raw", records)
-    print(f"OK: inseridos/upsert {len(records)} registros em ipca_1737_raw")
+        target_url = with_period(job.url, period)
+        df, _content_type = fetch_sidra(target_url)
+        records = to_records(df, source_url=target_url)
+        if not records:
+            raise RuntimeError("Sem registros retornados pela API SIDRA.")
+        upsert_supabase("ipca_1737_raw", records)
+        total_records = len(records)
+    else:
+        try:
+            first_url = with_period(job.url, "first")
+            last_url = with_period(job.url, "last")
+            df_first, _content_type = fetch_sidra(first_url)
+            df_last, _content_type = fetch_sidra(last_url)
+            first_period = max_period(df_first)
+            last_period = max_period(df_last)
+        except (requests.RequestException, RuntimeError, ValueError) as exc:
+            raise RuntimeError(
+                "Carga inicial requer endpoints /p/first e /p/last disponíveis."
+            ) from exc
+
+        periods = build_periods(first_period, last_period)
+
+        for period in periods:
+            target_url = with_period(job.url, period)
+            df, _content_type = fetch_sidra(target_url)
+            records = to_records(df, source_url=target_url)
+            if not records:
+                raise RuntimeError("Sem registros retornados pela API SIDRA.")
+            upsert_supabase("ipca_1737_raw", records)
+            total_records += len(records)
+            print(f"Período {period}: {len(records)} registros")
+
+    if args.action == "initial":
+        print(f"Períodos processados: {len(periods)}")
+
+    print(
+        f"OK: inseridos/upsert {total_records} registros em ipca_1737_raw ({args.dataset}/{args.action})"
+    )
 
 
 if __name__ == "__main__":
