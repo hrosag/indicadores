@@ -1,78 +1,161 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { useEffect, useMemo, useState } from "react";
+import IpcaTable from "../../../components/IpcaTable";
+import IpcaToolbar, { MetricOption } from "../../../components/IpcaToolbar";
+import MainMetricChart from "../../../components/MainMetricChart";
+import MiniMetricCharts from "../../../components/MiniMetricCharts";
+import { fetchIpcaMonthly, getMinMaxDate, IpcaRow, MetricKey } from "../../../lib/ipca";
 
-type Row = {
-  ano: number;
-  mes: string;
-  data: string; // "YYYY-MM"
-  num_indice: number | null;
-  var_m: number | null;
-  var_3_m: number | null;
-  var_6_m: number | null;
-  var_ano: number | null;
-  var_12_m: number | null;
-};
+const METRICS: MetricOption[] = [
+  { key: "var_m", label: "Mês" },
+  { key: "var_3_m", label: "3 meses" },
+  { key: "var_6_m", label: "6 meses" },
+  { key: "var_ano", label: "Ano" },
+  { key: "var_12_m", label: "12 meses" },
+];
+
+const DEFAULT_METRIC: MetricKey = "var_12_m";
 
 export default function Page() {
-  const [rows, setRows] = useState<Row[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [rows, setRows] = useState<IpcaRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [autoRange, setAutoRange] = useState(true);
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [selectedMetric, setSelectedMetric] = useState<MetricKey>(DEFAULT_METRIC);
+  const [resetKey, setResetKey] = useState(0);
+  const [rangeLabel, setRangeLabel] = useState({ min: "", max: "" });
+
+  // TODO: integrar com o mecanismo real de role/claims.
+  const isAdmin = false;
+
+  const loadData = async (options?: { keepLoading?: boolean }) => {
+    if (!options?.keepLoading) setLoading(true);
+    setError(null);
+
+    try {
+      const data = await fetchIpcaMonthly({ start, end, auto: autoRange });
+      setRows(data);
+      const minMax = getMinMaxDate(data);
+      setRangeLabel(minMax);
+      if (autoRange) {
+        setStart(minMax.min);
+        setEnd(minMax.max);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro inesperado ao buscar dados.";
+      setError(message.includes("Failed to fetch") ? "Falha de conexão. Tente novamente." : message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from("vw_ipca_1737_monthly")
-        .select("ano,mes,data,num_indice,var_m,var_3_m,var_6_m,var_ano,var_12_m")
-        .order("data", { ascending: false })
-        .limit(24);
-
-      if (error) setError(error.message);
-      else setRows((data ?? []) as Row[]);
-
-      setLoading(false);
-    })();
+    void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const metricLabel = useMemo(
+    () => METRICS.find((metric) => metric.key === selectedMetric)?.label ?? "",
+    [selectedMetric]
+  );
+
+  const otherMetrics = useMemo(
+    () => METRICS.filter((metric) => metric.key !== selectedMetric),
+    [selectedMetric]
+  );
+
+  const handleReset = () => {
+    setAutoRange(true);
+    setStart("");
+    setEnd("");
+    setSelectedMetric(DEFAULT_METRIC);
+    setResetKey((prev) => prev + 1);
+    void loadData();
+  };
+
+  const handleLoad = () => {
+    if (!autoRange && (!start || !end)) {
+      setError("Informe Start e End para o modo manual.");
+      return;
+    }
+    void loadData();
+  };
+
+  const handleExport = async () => {
+    if (!isAdmin) return;
+    const XLSX = await import("xlsx");
+    const exportRows = rows.map((row) => ({
+      data: row.data,
+      var_m: row.var_m ?? "",
+      var_3_m: row.var_3_m ?? "",
+      var_6_m: row.var_6_m ?? "",
+      var_ano: row.var_ano ?? "",
+      var_12_m: row.var_12_m ?? "",
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(exportRows, {
+      header: ["data", "var_m", "var_3_m", "var_6_m", "var_ano", "var_12_m"],
+    });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "IPCA");
+    const filename = autoRange
+      ? "ipca_min_max.xlsx"
+      : `ipca_${start || rangeLabel.min}_${end || rangeLabel.max}.xlsx`;
+    XLSX.writeFile(workbook, filename);
+  };
+
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Indicadores — IPCA (IBGE/SIDRA)</h1>
+    <main style={{ padding: 24, display: "flex", flexDirection: "column", gap: 24 }}>
+      <header>
+        <h1 style={{ margin: 0 }}>Indicadores — IPCA (IBGE/SIDRA)</h1>
+        <p style={{ marginTop: 6, color: "#6b7280" }}>
+          Série mensal do IPCA (1737) com seleção de métrica e análise detalhada.
+        </p>
+      </header>
 
-      {loading && <p>Carregando…</p>}
-      {error && (
-        <pre style={{ whiteSpace: "pre-wrap", color: "crimson" }}>
-          {error}
-        </pre>
-      )}
+      <IpcaToolbar
+        start={start}
+        end={end}
+        auto={autoRange}
+        metric={selectedMetric}
+        metrics={METRICS}
+        loading={loading}
+        isAdmin={isAdmin}
+        onStartChange={setStart}
+        onEndChange={setEnd}
+        onAutoChange={setAutoRange}
+        onMetricChange={setSelectedMetric}
+        onLoad={handleLoad}
+        onReset={handleReset}
+        onExport={handleExport}
+      />
 
-      {!loading && !error && (
-        <table cellPadding={8} style={{ borderCollapse: "collapse", marginTop: 16 }}>
-          <thead>
-            <tr>
-              <th>data</th>
-              <th>num_indice</th>
-              <th>var_m</th>
-              <th>var_3_m</th>
-              <th>var_6_m</th>
-              <th>var_ano</th>
-              <th>var_12_m</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.data}>
-                <td>{r.data}</td>
-                <td>{r.num_indice ?? ""}</td>
-                <td>{r.var_m ?? ""}</td>
-                <td>{r.var_3_m ?? ""}</td>
-                <td>{r.var_6_m ?? ""}</td>
-                <td>{r.var_ano ?? ""}</td>
-                <td>{r.var_12_m ?? ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <section style={{ display: "grid", gap: 16 }}>
+        <MainMetricChart
+          rows={rows}
+          metric={selectedMetric}
+          metricLabel={metricLabel}
+          loading={loading}
+          error={error}
+          onRetry={handleLoad}
+        />
+
+        <MiniMetricCharts
+          rows={rows}
+          metrics={otherMetrics}
+          activeMetric={selectedMetric}
+          onSelect={setSelectedMetric}
+        />
+      </section>
+
+      <IpcaTable rows={rows} loading={loading} resetKey={resetKey} />
+
+      {!loading && !error && rows.length > 0 && (
+        <footer style={{ color: "#6b7280", fontSize: 12 }}>
+          Range atual: {autoRange ? "Auto (min→max)" : `${start} → ${end}`} · Disponível: {rangeLabel.min} → {rangeLabel.max}
+        </footer>
       )}
     </main>
   );
