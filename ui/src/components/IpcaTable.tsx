@@ -206,8 +206,8 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
         </div>
       </div>
 
-      <div style={{ marginTop: 16, overflowX: "auto" }}>
-        <div style={{ display: "inline-block", minWidth: gridMinWidth, width: "fit-content" }}>
+      <div style={{ marginTop: 16, overflowX: "auto", width: "100%" }}>
+        <div style={{ minWidth: gridMinWidth, width: "100%" }}>
           <div
             ref={containerRef}
             onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
@@ -229,7 +229,7 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
                 background: "#f3f4f6",
                 borderBottom: "1px solid #e5e7eb",
                 padding: "8px 0",
-                width: "fit-content",
+                width: "100%",
               }}
             >
               <div
@@ -325,13 +325,13 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
             ) : pageRows.length === 0 ? (
               <div style={{ padding: 16 }}>Nenhum registro.</div>
             ) : (
-              <div style={{ height: totalHeight, position: "relative", width: "fit-content" }}>
+              <div style={{ height: totalHeight, position: "relative", width: "100%" }}>
                 <div
                   style={{
                     position: "absolute",
                     top: startIndex * rowHeight,
                     left: 0,
-                    width: "fit-content",
+                    width: "100%",
                   }}
                 >
                   {visibleRows.map((row) => (
@@ -343,7 +343,7 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
                         borderBottom: "1px solid #f3f4f6",
                         alignItems: "center",
                         height: rowHeight,
-                        width: "fit-content",
+                        width: "100%",
                       }}
                     >
                       <div
