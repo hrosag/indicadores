@@ -1,10 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { formatPercentBR } from "../lib/format";
 import { IpcaRow, MetricKey } from "../lib/ipca";
 
-const formatPercent = (value: number | null) =>
-  value === null ? "-" : `${value.toFixed(2)}%`;
+const formatPercentLabel = (value: number | null) => {
+  if (value === null) return "-";
+  return formatPercentBR(value) || "-";
+};
 
 type MainMetricChartProps = {
   rows: IpcaRow[];
@@ -144,7 +147,7 @@ export default function MainMetricChart({
               fontSize: 12,
             }}
           >
-            {chart.points[hoverIndex].data} · {formatPercent(chart.points[hoverIndex].value)}
+            {chart.points[hoverIndex].data} · {formatPercentLabel(chart.points[hoverIndex].value)}
           </div>
         )}
       </div>
@@ -194,7 +197,7 @@ export default function MainMetricChart({
             fill="#6b7280"
             fontSize="12"
           >
-            {formatPercent(chart.max)}
+            {formatPercentLabel(chart.max)}
           </text>
           <text
             x={chart.width - chart.paddingX}
@@ -203,7 +206,7 @@ export default function MainMetricChart({
             fill="#6b7280"
             fontSize="12"
           >
-            {formatPercent(chart.min)}
+            {formatPercentLabel(chart.min)}
           </text>
         </svg>
       ) : (

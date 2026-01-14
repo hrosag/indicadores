@@ -38,6 +38,32 @@ export const getMinMaxDate = (rows: IpcaRow[]) => {
   return { min: sorted[0].data, max: sorted[sorted.length - 1].data };
 };
 
+export const fetchIpcaMinMaxDate = async () => {
+  const qMin = supabase
+    .from("vw_ipca_1737_monthly")
+    .select("data")
+    .order("data", { ascending: true })
+    .limit(1);
+  const qMax = supabase
+    .from("vw_ipca_1737_monthly")
+    .select("data")
+    .order("data", { ascending: false })
+    .limit(1);
+
+  const [
+    { data: minData, error: minErr },
+    { data: maxData, error: maxErr },
+  ] = await Promise.all([qMin, qMax]);
+
+  if (minErr) throw new Error(minErr.message);
+  if (maxErr) throw new Error(maxErr.message);
+
+  return {
+    min: (minData?.[0]?.data ?? "") as string,
+    max: (maxData?.[0]?.data ?? "") as string,
+  };
+};
+
 export const fetchIpcaMonthly = async ({ start, end, auto }: FetchParams) => {
   let query = supabase
     .from("vw_ipca_1737_monthly")
