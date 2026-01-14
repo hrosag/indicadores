@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatPercentBR } from "../lib/format";
 import { IpcaRow, MetricKey } from "../lib/ipca";
 
@@ -13,6 +13,8 @@ const formatYMShort = (ym: string) => {
   const [year, month] = ym.split("-");
   return `${month}/${year.slice(2)}`;
 };
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
 type MainMetricChartProps = {
   rows: IpcaRow[];
@@ -40,6 +42,30 @@ export default function MainMetricChart({
   const [tooltipBounds, setTooltipBounds] = useState<{ width: number; height: number } | null>(
     null
   );
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+
+    const updateWidth = () => {
+      setContainerWidth(Math.floor(element.getBoundingClientRect().width));
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver((entries) => {
+      entries.forEach((entry) => {
+        setContainerWidth(Math.floor(entry.contentRect.width));
+      });
+    });
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const series = useMemo(
     () =>
@@ -58,9 +84,9 @@ export default function MainMetricChart({
     const values = series.map((point) => point.value as number);
     const min = Math.min(...values);
     const max = Math.max(...values);
-    const paddingX = 48;
+    const width = Math.max(520, Math.floor(containerWidth || 0));
+    const paddingX = clamp(Math.round(width * 0.05), 22, 48);
     const paddingY = 32;
-    const width = 900;
     const height = 320;
     const yMin = Math.floor(min * 100) / 100;
     const yMax = Math.ceil(max * 100) / 100;
@@ -111,7 +137,7 @@ export default function MainMetricChart({
       xTicks,
       isShortSeries,
     };
-  }, [series]);
+  }, [series, containerWidth]);
 
   const canShowLabels = Boolean(showDataLabels) && series.length <= 36;
 
@@ -202,7 +228,7 @@ export default function MainMetricChart({
       </div>
 
       {chart ? (
-        <div style={{ position: "relative", marginTop: 16 }}>
+        <div ref={containerRef} style={{ position: "relative", marginTop: 16 }}>
           {hoverIndex !== null && tooltipPos && chart.points[hoverIndex] && (
             <div
               style={{

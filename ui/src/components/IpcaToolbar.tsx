@@ -50,6 +50,8 @@ export default function IpcaToolbar({
   onReset,
   onExport,
 }: IpcaToolbarProps) {
+  const isLoadDisabled = loading || disableLoad;
+
   return (
     <section
       style={{
@@ -141,15 +143,15 @@ export default function IpcaToolbar({
           <button
             type="button"
             onClick={onLoad}
-            disabled={loading || disableLoad}
+            disabled={isLoadDisabled}
             style={{
               padding: "8px 14px",
               borderRadius: 8,
-              border: "1px solid #1d4ed8",
-              background: "#1d4ed8",
+              border: `1px solid ${isLoadDisabled ? "#9ca3af" : "#1d4ed8"}`,
+              background: isLoadDisabled ? "#9ca3af" : "#1d4ed8",
               color: "#fff",
               fontWeight: 600,
-              cursor: "pointer",
+              cursor: isLoadDisabled ? "not-allowed" : "pointer",
             }}
           >
             {loading ? "Carregando..." : "Carregar"}
