@@ -28,7 +28,7 @@ export default function Page() {
   const [rows, setRows] = useState<IpcaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [autoRange, setAutoRange] = useState(true);
+  const [autoRange, setAutoRange] = useState(false);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(DEFAULT_METRIC);
@@ -36,6 +36,7 @@ export default function Page() {
   const [rangeLabel, setRangeLabel] = useState({ min: "", max: "" });
   const [availableRange, setAvailableRange] = useState({ min: "", max: "" });
   const [helperMessage, setHelperMessage] = useState<string | null>(null);
+  const [showDataLabels, setShowDataLabels] = useState(false);
 
   // TODO: integrar com o mecanismo real de role/claims.
   const isAdmin = false;
@@ -103,7 +104,7 @@ export default function Page() {
         const range = await fetchIpcaMinMaxDate();
         setAvailableRange(range);
         const defaultRange = range.max ? getDefaultRange(range.max) : { start: "", end: "" };
-        setAutoRange(true);
+        setAutoRange(false);
         setStart(defaultRange.start);
         setEnd(defaultRange.end);
         await loadData({
@@ -141,7 +142,7 @@ export default function Page() {
       const range = await fetchIpcaMinMaxDate();
       setAvailableRange(range);
       const defaultRange = range.max ? getDefaultRange(range.max) : { start: "", end: "" };
-      setAutoRange(true);
+      setAutoRange(false);
       setStart(defaultRange.start);
       setEnd(defaultRange.end);
       await loadData({ auto: false, start: defaultRange.start, end: defaultRange.end });
@@ -182,16 +183,13 @@ export default function Page() {
   };
 
   const handleAutoChange = (value: boolean) => {
-    setAutoRange(value);
-    if (!value && (!start || !end) && availableRange.max) {
-      const defaultRange = getDefaultRange(availableRange.max);
-      setStart(defaultRange.start);
-      setEnd(defaultRange.end);
-      setHelperMessage("Intervalo padrão aplicado (últimos 12 meses).");
-    }
     if (value) {
+      setAutoRange(true);
       setHelperMessage(null);
+      void loadData({ auto: true });
+      return;
     }
+    setAutoRange(false);
   };
 
   const handleExport = async () => {
@@ -236,6 +234,8 @@ export default function Page() {
         availableMin={availableRange.min}
         availableMax={availableRange.max}
         helperMessage={helperMessage}
+        disableLoad={autoRange}
+        showDataLabels={showDataLabels}
         onStartChange={setStart}
         onEndChange={setEnd}
         onAutoChange={handleAutoChange}
@@ -243,6 +243,7 @@ export default function Page() {
         onLoad={handleLoad}
         onReset={handleReset}
         onExport={handleExport}
+        onShowDataLabelsChange={setShowDataLabels}
       />
 
       <section style={{ display: "grid", gap: 16 }}>
@@ -252,6 +253,7 @@ export default function Page() {
           metricLabel={metricLabel}
           loading={loading}
           error={error}
+          showDataLabels={showDataLabels}
           onRetry={handleLoad}
         />
 
@@ -267,8 +269,8 @@ export default function Page() {
 
       {!loading && !error && rows.length > 0 && (
         <footer style={{ color: "#6b7280", fontSize: 12 }}>
-          Range atual: {autoRange ? "Auto (min→max)" : `${start} → ${end}`} · Disponível:{" "}
-          {availableRange.min} → {availableRange.max}
+          Range atual: {autoRange ? "Histórico completo (min→max)" : `${start} → ${end}`} ·
+          Disponível: {availableRange.min} → {availableRange.max}
         </footer>
       )}
     </main>

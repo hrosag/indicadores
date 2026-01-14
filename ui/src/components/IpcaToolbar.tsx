@@ -18,6 +18,8 @@ type IpcaToolbarProps = {
   availableMin?: string;
   availableMax?: string;
   helperMessage?: string | null;
+  disableLoad?: boolean;
+  showDataLabels: boolean;
   onStartChange: (value: string) => void;
   onEndChange: (value: string) => void;
   onAutoChange: (value: boolean) => void;
@@ -25,6 +27,7 @@ type IpcaToolbarProps = {
   onLoad: () => void;
   onReset: () => void;
   onExport: () => void;
+  onShowDataLabelsChange: (value: boolean) => void;
 };
 
 export default function IpcaToolbar({
@@ -38,6 +41,8 @@ export default function IpcaToolbar({
   availableMin,
   availableMax,
   helperMessage,
+  disableLoad,
+  showDataLabels,
   onStartChange,
   onEndChange,
   onAutoChange,
@@ -45,6 +50,7 @@ export default function IpcaToolbar({
   onLoad,
   onReset,
   onExport,
+  onShowDataLabelsChange,
 }: IpcaToolbarProps) {
   return (
     <section
@@ -103,7 +109,15 @@ export default function IpcaToolbar({
             checked={auto}
             onChange={(event) => onAutoChange(event.target.checked)}
           />
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Padrão (min→max)</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Histórico completo (min→max)</span>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={showDataLabels}
+            onChange={(event) => onShowDataLabelsChange(event.target.checked)}
+          />
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Exibir valores</span>
         </label>
       </div>
 
@@ -137,7 +151,7 @@ export default function IpcaToolbar({
           <button
             type="button"
             onClick={onLoad}
-            disabled={loading}
+            disabled={loading || disableLoad}
             style={{
               padding: "8px 14px",
               borderRadius: 8,
