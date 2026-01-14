@@ -21,6 +21,7 @@ type MainMetricChartProps = {
   loading: boolean;
   error: string | null;
   showDataLabels?: boolean;
+  onShowDataLabelsChange?: (value: boolean) => void;
   onRetry: () => void;
 };
 
@@ -31,6 +32,7 @@ export default function MainMetricChart({
   loading,
   error,
   showDataLabels,
+  onShowDataLabelsChange,
   onRetry,
 }: MainMetricChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -187,6 +189,16 @@ export default function MainMetricChart({
             Série mensal — {rows.length} registros
           </p>
         </div>
+        {onShowDataLabelsChange && (
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={Boolean(showDataLabels)}
+              onChange={(event) => onShowDataLabelsChange(event.target.checked)}
+            />
+            <span style={{ fontWeight: 600, color: "#334155" }}>Exibir valores</span>
+          </label>
+        )}
       </div>
 
       {chart ? (

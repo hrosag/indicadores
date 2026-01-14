@@ -28,7 +28,8 @@ export default function Page() {
   const [rows, setRows] = useState<IpcaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [autoRange, setAutoRange] = useState(false);
+  const [isDefault12m, setIsDefault12m] = useState(true);
+  const [isFullHistory, setIsFullHistory] = useState(false);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(DEFAULT_METRIC);
@@ -79,7 +80,7 @@ export default function Page() {
     setError(null);
 
     try {
-      const auto = options?.auto ?? autoRange;
+      const auto = options?.auto ?? false;
       const startValue = options?.start ?? start;
       const endValue = options?.end ?? end;
       const data = await fetchIpcaMonthly({ start: startValue, end: endValue, auto });
@@ -104,7 +105,8 @@ export default function Page() {
         const range = await fetchIpcaMinMaxDate();
         setAvailableRange(range);
         const defaultRange = range.max ? getDefaultRange(range.max) : { start: "", end: "" };
-        setAutoRange(false);
+        setIsDefault12m(true);
+        setIsFullHistory(false);
         setStart(defaultRange.start);
         setEnd(defaultRange.end);
         await loadData({
@@ -142,7 +144,8 @@ export default function Page() {
       const range = await fetchIpcaMinMaxDate();
       setAvailableRange(range);
       const defaultRange = range.max ? getDefaultRange(range.max) : { start: "", end: "" };
-      setAutoRange(false);
+      setIsDefault12m(true);
+      setIsFullHistory(false);
       setStart(defaultRange.start);
       setEnd(defaultRange.end);
       await loadData({ auto: false, start: defaultRange.start, end: defaultRange.end });
@@ -153,11 +156,7 @@ export default function Page() {
   };
 
   const handleLoad = () => {
-    if (autoRange) {
-      setHelperMessage(null);
-      void loadData({ auto: true });
-      return;
-    }
+    if (isDefault12m || isFullHistory) return;
 
     let nextStart = start;
     let nextEnd = end;
@@ -179,17 +178,44 @@ export default function Page() {
 
     const clamped = clampManualRange(nextStart, nextEnd);
     setHelperMessage(message ?? clamped.message);
+    setIsFullHistory(false);
     void loadData({ auto: false, start: clamped.start, end: clamped.end });
   };
 
-  const handleAutoChange = (value: boolean) => {
+  const handleDefaultChange = (value: boolean) => {
     if (value) {
-      setAutoRange(true);
+      const nextRange = availableRange.max ? getDefaultRange(availableRange.max) : { start, end };
+      setIsDefault12m(true);
+      setIsFullHistory(false);
+      setStart(nextRange.start);
+      setEnd(nextRange.end);
       setHelperMessage(null);
+      void loadData({ auto: false, start: nextRange.start, end: nextRange.end });
+      return;
+    }
+    setIsDefault12m(false);
+  };
+
+  const handleLoadFullHistory = () => {
+    setIsDefault12m(false);
+    setIsFullHistory(true);
+    setHelperMessage(null);
+    void loadData({ auto: true });
+  };
+
+  const handleRetry = () => {
+    if (isFullHistory) {
       void loadData({ auto: true });
       return;
     }
-    setAutoRange(false);
+    if (isDefault12m) {
+      const nextRange = availableRange.max ? getDefaultRange(availableRange.max) : { start, end };
+      setStart(nextRange.start);
+      setEnd(nextRange.end);
+      void loadData({ auto: false, start: nextRange.start, end: nextRange.end });
+      return;
+    }
+    handleLoad();
   };
 
   const handleExport = async () => {
@@ -208,7 +234,7 @@ export default function Page() {
     });
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "IPCA");
-    const filename = autoRange
+    const filename = isFullHistory
       ? "ipca_min_max.xlsx"
       : `ipca_${start || rangeLabel.min}_${end || rangeLabel.max}.xlsx`;
     XLSX.writeFile(workbook, filename);
@@ -226,7 +252,7 @@ export default function Page() {
       <IpcaToolbar
         start={start}
         end={end}
-        auto={autoRange}
+        auto={isDefault12m}
         metric={selectedMetric}
         metrics={METRICS}
         loading={loading}
@@ -234,16 +260,15 @@ export default function Page() {
         availableMin={availableRange.min}
         availableMax={availableRange.max}
         helperMessage={helperMessage}
-        disableLoad={autoRange}
-        showDataLabels={showDataLabels}
+        disableLoad={isDefault12m || isFullHistory}
         onStartChange={setStart}
         onEndChange={setEnd}
-        onAutoChange={handleAutoChange}
+        onAutoChange={handleDefaultChange}
         onMetricChange={setSelectedMetric}
         onLoad={handleLoad}
+        onLoadFullHistory={handleLoadFullHistory}
         onReset={handleReset}
         onExport={handleExport}
-        onShowDataLabelsChange={setShowDataLabels}
       />
 
       <section style={{ display: "grid", gap: 16 }}>
@@ -254,7 +279,8 @@ export default function Page() {
           loading={loading}
           error={error}
           showDataLabels={showDataLabels}
-          onRetry={handleLoad}
+          onShowDataLabelsChange={setShowDataLabels}
+          onRetry={handleRetry}
         />
 
         <MiniMetricCharts
@@ -269,8 +295,13 @@ export default function Page() {
 
       {!loading && !error && rows.length > 0 && (
         <footer style={{ color: "#6b7280", fontSize: 12 }}>
-          Range atual: {autoRange ? "Histórico completo (min→max)" : `${start} → ${end}`} ·
-          Disponível: {availableRange.min} → {availableRange.max}
+          Range atual:{" "}
+          {isFullHistory
+            ? "Histórico completo (min→max)"
+            : isDefault12m
+              ? "Padrão (últimos 12 meses)"
+              : `${start} → ${end}`}{" "}
+          · Disponível: {availableRange.min} → {availableRange.max}
         </footer>
       )}
     </main>
