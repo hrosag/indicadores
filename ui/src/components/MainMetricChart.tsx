@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { formatPercentBR } from "../lib/format";
 import { IpcaRow, MetricKey } from "../lib/ipca";
 
@@ -40,30 +40,8 @@ export default function MainMetricChart({
   const [tooltipBounds, setTooltipBounds] = useState<{ width: number; height: number } | null>(
     null
   );
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) return;
-
-    const updateWidth = () => {
-      setContainerWidth(Math.floor(element.getBoundingClientRect().width));
-    };
-
-    updateWidth();
-
-    if (typeof ResizeObserver === "undefined") return;
-
-    const observer = new ResizeObserver((entries) => {
-      entries.forEach((entry) => {
-        setContainerWidth(Math.floor(entry.contentRect.width));
-      });
-    });
-
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+  const W = 1000;
+  const H = 320;
 
   const series = useMemo(
     () =>
@@ -82,10 +60,10 @@ export default function MainMetricChart({
     const values = series.map((point) => point.value as number);
     const min = Math.min(...values);
     const max = Math.max(...values);
-    const width = Math.max(520, Math.floor(containerWidth || 0));
+    const width = W;
     const paddingX = 56;
     const paddingY = 32;
-    const height = 320;
+    const height = H;
     const yMin = Math.floor(min * 100) / 100;
     const yMax = Math.ceil(max * 100) / 100;
     const range = yMax - yMin || 1;
@@ -135,7 +113,7 @@ export default function MainMetricChart({
       xTicks,
       isShortSeries,
     };
-  }, [series, containerWidth]);
+  }, [series, W, H]);
 
   const canShowLabels = Boolean(showDataLabels) && series.length <= 36;
 
@@ -226,7 +204,7 @@ export default function MainMetricChart({
       </div>
 
       {chart ? (
-        <div ref={containerRef} style={{ position: "relative", marginTop: 16 }}>
+        <div style={{ position: "relative", marginTop: 16 }}>
           {hoverIndex !== null && tooltipPos && chart.points[hoverIndex] && (
             <div
               style={{
@@ -261,7 +239,8 @@ export default function MainMetricChart({
           )}
           <svg
             viewBox={`0 0 ${chart.width} ${chart.height}`}
-            style={{ width: "100%", height: 320 }}
+            preserveAspectRatio="none"
+            style={{ width: "100%", height: 360, display: "block" }}
             role="img"
             aria-label={`Gráfico ${metricLabel}`}
             onMouseMove={(event) => {
