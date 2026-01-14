@@ -40,6 +40,8 @@ export default function MainMetricChart({
   const [tooltipBounds, setTooltipBounds] = useState<{ width: number; height: number } | null>(
     null
   );
+
+  // Canvas interno fixo (estável) + SVG responsivo por CSS
   const W = 1000;
   const H = 320;
 
@@ -57,13 +59,18 @@ export default function MainMetricChart({
 
   const chart = useMemo(() => {
     if (series.length === 0) return null;
+
     const values = series.map((point) => point.value as number);
     const min = Math.min(...values);
     const max = Math.max(...values);
+
     const width = W;
+    const height = H;
+
+    // Padding (deixe maior à esquerda por conta dos labels do eixo Y)
     const paddingX = 56;
     const paddingY = 32;
-    const height = H;
+
     const yMin = Math.floor(min * 100) / 100;
     const yMax = Math.ceil(max * 100) / 100;
     const range = yMax - yMin || 1;
@@ -72,8 +79,10 @@ export default function MainMetricChart({
       const x =
         paddingX +
         (idx / Math.max(series.length - 1, 1)) * (width - paddingX * 2);
+
       const y =
         paddingY + ((yMax - (point.value as number)) / range) * (height - paddingY * 2);
+
       return { x, y, ...point };
     });
 
@@ -82,6 +91,7 @@ export default function MainMetricChart({
     const yTicks = Array.from({ length: yTicksCount }, (_, idx) => yMin + yStep * idx);
 
     const isShortSeries = series.length <= 14;
+
     const xTickIndexes = isShortSeries
       ? []
       : (() => {
@@ -237,6 +247,7 @@ export default function MainMetricChart({
               })()}
             </div>
           )}
+
           <svg
             viewBox={`0 0 ${chart.width} ${chart.height}`}
             preserveAspectRatio="none"
@@ -257,10 +268,11 @@ export default function MainMetricChart({
             {(() => {
               const hasZero = chart.min < 0 && chart.max > 0;
               if (!hasZero) return null;
+
               const yZero =
                 chart.paddingY +
-                ((chart.max - 0) / (chart.max - chart.min)) *
-                  (chart.height - chart.paddingY * 2);
+                ((chart.max - 0) / (chart.max - chart.min)) * (chart.height - chart.paddingY * 2);
+
               return (
                 <g>
                   <rect
@@ -281,11 +293,13 @@ export default function MainMetricChart({
                 </g>
               );
             })()}
+
             {chart.yTicks.map((tick) => {
               const y =
                 chart.paddingY +
                 ((chart.yMax - tick) / (chart.yMax - chart.yMin || 1)) *
                   (chart.height - chart.paddingY * 2);
+
               return (
                 <g key={`y-tick-${tick}`}>
                   <line
@@ -346,6 +360,7 @@ export default function MainMetricChart({
                 </g>
               );
             })}
+
             <line
               x1={chart.paddingX}
               x2={chart.width - chart.paddingX}
@@ -360,12 +375,14 @@ export default function MainMetricChart({
               y2={chart.height - chart.paddingY}
               stroke="#e5e7eb"
             />
+
             <polyline
               fill="none"
               stroke="#2563eb"
               strokeWidth="2"
               points={chart.points.map((point) => `${point.x},${point.y}`).join(" ")}
             />
+
             {chart.points.map((point, idx) => {
               const isNegative = (point.value as number) < 0;
               return (
