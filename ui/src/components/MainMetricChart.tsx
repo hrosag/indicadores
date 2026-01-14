@@ -14,8 +14,6 @@ const formatYMShort = (ym: string) => {
   return `${month}/${year.slice(2)}`;
 };
 
-const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
-
 type MainMetricChartProps = {
   rows: IpcaRow[];
   metric: MetricKey;
@@ -85,7 +83,7 @@ export default function MainMetricChart({
     const min = Math.min(...values);
     const max = Math.max(...values);
     const width = Math.max(520, Math.floor(containerWidth || 0));
-    const paddingX = clamp(Math.round(width * 0.05), 22, 48);
+    const paddingX = 56;
     const paddingY = 32;
     const height = 320;
     const yMin = Math.floor(min * 100) / 100;
