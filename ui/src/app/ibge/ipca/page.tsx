@@ -28,7 +28,7 @@ export default function Page() {
   const [rows, setRows] = useState<IpcaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [autoRange, setAutoRange] = useState(false);
+  const [autoRange, setAutoRange] = useState(true);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(DEFAULT_METRIC);
@@ -103,7 +103,7 @@ export default function Page() {
         const range = await fetchIpcaMinMaxDate();
         setAvailableRange(range);
         const defaultRange = range.max ? getDefaultRange(range.max) : { start: "", end: "" };
-        setAutoRange(false);
+        setAutoRange(true);
         setStart(defaultRange.start);
         setEnd(defaultRange.end);
         await loadData({
@@ -141,7 +141,7 @@ export default function Page() {
       const range = await fetchIpcaMinMaxDate();
       setAvailableRange(range);
       const defaultRange = range.max ? getDefaultRange(range.max) : { start: "", end: "" };
-      setAutoRange(false);
+      setAutoRange(true);
       setStart(defaultRange.start);
       setEnd(defaultRange.end);
       await loadData({ auto: false, start: defaultRange.start, end: defaultRange.end });

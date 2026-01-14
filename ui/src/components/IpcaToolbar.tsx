@@ -103,7 +103,7 @@ export default function IpcaToolbar({
             checked={auto}
             onChange={(event) => onAutoChange(event.target.checked)}
           />
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Auto (min→max)</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Padrão (min→max)</span>
         </label>
       </div>
 
