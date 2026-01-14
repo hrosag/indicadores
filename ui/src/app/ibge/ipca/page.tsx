@@ -260,7 +260,7 @@ export default function Page() {
         availableMin={availableRange.min}
         availableMax={availableRange.max}
         helperMessage={helperMessage}
-        disableLoad={isDefault12m || isFullHistory}
+        disableLoad={isFullHistory}
         onStartChange={setStart}
         onEndChange={setEnd}
         onAutoChange={handleDefaultChange}
