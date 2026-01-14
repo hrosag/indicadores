@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { formatPercentBR } from "../lib/format";
 import { IpcaRow, MetricKey } from "../lib/ipca";
 import { MetricOption } from "./IpcaToolbar";
 
@@ -41,6 +42,22 @@ export default function MiniMetricCharts({
     [metrics, rows]
   );
 
+  const lastValues = useMemo(
+    () =>
+      metrics.reduce<Record<string, number | null>>((acc, metric) => {
+        for (let i = rows.length - 1; i >= 0; i -= 1) {
+          const value = rows[i]?.[metric.key] ?? null;
+          if (value !== null) {
+            acc[metric.key] = value;
+            return acc;
+          }
+        }
+        acc[metric.key] = null;
+        return acc;
+      }, {}),
+    [metrics, rows]
+  );
+
   return (
     <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
       {metrics.map((metric) => (
@@ -58,6 +75,9 @@ export default function MiniMetricCharts({
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 600 }}>{metric.label}</div>
+          <div style={{ marginTop: 4, fontSize: 12, color: "#6b7280" }}>
+            {formatPercentBR(lastValues[metric.key] ?? null)}
+          </div>
           <svg viewBox="0 0 120 40" style={{ width: "100%", height: 48, marginTop: 8 }}>
             <polyline
               fill="none"

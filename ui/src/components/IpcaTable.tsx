@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatPercentBR } from "../lib/format";
 import { IpcaRow, MetricKey } from "../lib/ipca";
-
-const formatValue = (value: number | null) => (value === null ? "" : value.toFixed(2));
 
 type SortState = {
   key: keyof IpcaRow;
@@ -22,6 +21,59 @@ type IpcaTableProps = {
 };
 
 const metricKeys: MetricKey[] = ["var_m", "var_3_m", "var_6_m", "var_ano", "var_12_m"];
+const columnLabels: Record<MetricKey | "data", string> = {
+  data: "Data",
+  var_m: "Mês",
+  var_3_m: "3 meses",
+  var_6_m: "6 meses",
+  var_ano: "Ano",
+  var_12_m: "12 meses",
+};
+
+const gridTemplateColumns = "110px 100px 100px 100px 100px 110px";
+
+type FilterPopoverProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+};
+
+function FilterPopover({ isOpen, onClose, children }: FilterPopoverProps) {
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      if (!popoverRef.current || popoverRef.current.contains(event.target as Node)) return;
+      onClose();
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      ref={popoverRef}
+      style={{
+        position: "absolute",
+        top: "100%",
+        right: 0,
+        marginTop: 6,
+        padding: 12,
+        width: 180,
+        borderRadius: 8,
+        border: "1px solid #e5e7eb",
+        background: "#fff",
+        boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)",
+        zIndex: 10,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
   const [sort, setSort] = useState<SortState>({ key: "data", direction: "desc" });
@@ -35,6 +87,7 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
     var_ano: { min: "", max: "" },
     var_12_m: { min: "", max: "" },
   });
+  const [openFilter, setOpenFilter] = useState<keyof IpcaRow | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -50,6 +103,7 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
       var_ano: { min: "", max: "" },
       var_12_m: { min: "", max: "" },
     });
+    setOpenFilter(null);
   }, [resetKey]);
 
   const filteredRows = useMemo(() => {
@@ -113,6 +167,19 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
     setPage(1);
   };
 
+  const handleApplyTextFilter = (value: string) => {
+    setFilterText(value);
+    setPage(1);
+  };
+
+  const handleApplyNumericFilter = (key: MetricKey, min: string, max: string) => {
+    setNumericFilters((current) => ({
+      ...current,
+      [key]: { min, max },
+    }));
+    setPage(1);
+  };
+
   return (
     <section
       style={{
@@ -137,110 +204,138 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
         </div>
       </div>
 
-      <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
-        <label style={{ fontSize: 12 }}>Filtro data</label>
-        <input
-          value={filterText}
-          onChange={(event) => {
-            setFilterText(event.target.value);
-            setPage(1);
-          }}
-          placeholder="YYYY-MM"
-          style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db" }}
-        />
-      </div>
-
       <div style={{ marginTop: 16, overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ background: "#f3f4f6" }}>
-              <th style={{ padding: 8, textAlign: "left" }}>
-                <button type="button" onClick={() => handleSort("data")}>
-                  data {sort.key === "data" ? (sort.direction === "asc" ? "▲" : "▼") : ""}
-                </button>
-              </th>
-              {metricKeys.map((key) => (
-                <th key={key} style={{ padding: 8, textAlign: "right" }}>
-                  <button type="button" onClick={() => handleSort(key)}>
-                    {key} {sort.key === key ? (sort.direction === "asc" ? "▲" : "▼") : ""}
-                  </button>
-                </th>
-              ))}
-            </tr>
-            <tr>
-              <th style={{ padding: 8 }} />
-              {metricKeys.map((key) => (
-                <th key={key} style={{ padding: 8 }}>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <input
-                      value={numericFilters[key].min}
-                      onChange={(event) => {
-                        setNumericFilters((current) => ({
-                          ...current,
-                          [key]: { ...current[key], min: event.target.value },
-                        }));
-                        setPage(1);
-                      }}
-                      placeholder="min"
-                      style={{ width: 60, padding: "4px 6px" }}
-                    />
-                    <input
-                      value={numericFilters[key].max}
-                      onChange={(event) => {
-                        setNumericFilters((current) => ({
-                          ...current,
-                          [key]: { ...current[key], max: event.target.value },
-                        }));
-                        setPage(1);
-                      }}
-                      placeholder="max"
-                      style={{ width: 60, padding: "4px 6px" }}
-                    />
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-        </table>
         <div
           ref={containerRef}
           onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
           style={{
             maxHeight: viewportHeight,
             overflowY: "auto",
-            borderTop: "1px solid #e5e7eb",
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
           }}
         >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns,
+              gap: 0,
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              background: "#f3f4f6",
+              borderBottom: "1px solid #e5e7eb",
+              padding: "8px 0",
+            }}
+          >
+            <div style={{ padding: "0 8px", position: "relative" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button type="button" onClick={() => handleSort("data")} style={{ fontWeight: 600 }}>
+                  {columnLabels.data}{" "}
+                  {sort.key === "data" ? (sort.direction === "asc" ? "▲" : "▼") : ""}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Filtrar data"
+                  onClick={() => setOpenFilter((current) => (current === "data" ? null : "data"))}
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 6,
+                    padding: "0 6px",
+                    fontSize: 12,
+                    background: "#fff",
+                  }}
+                >
+                  ⏷
+                </button>
+              </div>
+              <FilterPopover isOpen={openFilter === "data"} onClose={() => setOpenFilter(null)}>
+                <DataFilterForm
+                  value={filterText}
+                  onApply={(value) => {
+                    handleApplyTextFilter(value);
+                    setOpenFilter(null);
+                  }}
+                  onClear={() => {
+                    handleApplyTextFilter("");
+                    setOpenFilter(null);
+                  }}
+                />
+              </FilterPopover>
+            </div>
+            {metricKeys.map((key) => (
+              <div key={key} style={{ padding: "0 8px", position: "relative", textAlign: "right" }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                  <button type="button" onClick={() => handleSort(key)} style={{ fontWeight: 600 }}>
+                    {columnLabels[key]}{" "}
+                    {sort.key === key ? (sort.direction === "asc" ? "▲" : "▼") : ""}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Filtrar ${columnLabels[key]}`}
+                    onClick={() => setOpenFilter((current) => (current === key ? null : key))}
+                    style={{
+                      border: "1px solid #d1d5db",
+                      borderRadius: 6,
+                      padding: "0 6px",
+                      fontSize: 12,
+                      background: "#fff",
+                    }}
+                  >
+                    ⏷
+                  </button>
+                </div>
+                <FilterPopover isOpen={openFilter === key} onClose={() => setOpenFilter(null)}>
+                  <NumericFilterForm
+                    filter={numericFilters[key]}
+                    onApply={(min, max) => {
+                      handleApplyNumericFilter(key, min, max);
+                      setOpenFilter(null);
+                    }}
+                    onClear={() => {
+                      handleApplyNumericFilter(key, "", "");
+                      setOpenFilter(null);
+                    }}
+                  />
+                </FilterPopover>
+              </div>
+            ))}
+          </div>
+
           {loading ? (
             <div style={{ padding: 16 }}>Carregando tabela...</div>
           ) : pageRows.length === 0 ? (
             <div style={{ padding: 16 }}>Nenhum registro.</div>
           ) : (
             <div style={{ height: totalHeight, position: "relative" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <tbody
-                  style={{
-                    position: "absolute",
-                    top: startIndex * rowHeight,
-                    left: 0,
-                    right: 0,
-                  }}
-                >
-                  {visibleRows.map((row) => (
-                    <tr key={row.data} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "8px 8px", height: rowHeight }}>{row.data}</td>
-                      {metricKeys.map((key) => (
-                        <td
-                          key={key}
-                          style={{ padding: "8px 8px", textAlign: "right", height: rowHeight }}
-                        >
-                          {formatValue(row[key])}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div
+                style={{
+                  position: "absolute",
+                  top: startIndex * rowHeight,
+                  left: 0,
+                  right: 0,
+                }}
+              >
+                {visibleRows.map((row) => (
+                  <div
+                    key={row.data}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns,
+                      borderBottom: "1px solid #f3f4f6",
+                      alignItems: "center",
+                      height: rowHeight,
+                    }}
+                  >
+                    <div style={{ padding: "0 8px", textAlign: "left" }}>{row.data}</div>
+                    {metricKeys.map((key) => (
+                      <div key={key} style={{ padding: "0 8px", textAlign: "right" }}>
+                        {formatPercentBR(row[key])}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -276,5 +371,82 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
         </div>
       </div>
     </section>
+  );
+}
+
+type NumericFilterFormProps = {
+  filter: NumericFilter;
+  onApply: (min: string, max: string) => void;
+  onClear: () => void;
+};
+
+function NumericFilterForm({ filter, onApply, onClear }: NumericFilterFormProps) {
+  const [min, setMin] = useState(filter.min);
+  const [max, setMax] = useState(filter.max);
+
+  useEffect(() => {
+    setMin(filter.min);
+    setMax(filter.max);
+  }, [filter]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          value={min}
+          onChange={(event) => setMin(event.target.value)}
+          placeholder="min"
+          style={{ width: 70, padding: "4px 6px", borderRadius: 6, border: "1px solid #d1d5db" }}
+        />
+        <input
+          value={max}
+          onChange={(event) => setMax(event.target.value)}
+          placeholder="max"
+          style={{ width: 70, padding: "4px 6px", borderRadius: 6, border: "1px solid #d1d5db" }}
+        />
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button type="button" onClick={() => onApply(min, max)}>
+          Aplicar
+        </button>
+        <button type="button" onClick={onClear}>
+          Limpar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type DataFilterFormProps = {
+  value: string;
+  onApply: (value: string) => void;
+  onClear: () => void;
+};
+
+function DataFilterForm({ value, onApply, onClear }: DataFilterFormProps) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <label style={{ fontSize: 12, fontWeight: 600 }}>Contém</label>
+      <input
+        value={draft}
+        placeholder="YYYY-MM"
+        onChange={(event) => setDraft(event.target.value)}
+        style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #d1d5db" }}
+      />
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button type="button" onClick={() => onApply(draft)}>
+          Aplicar
+        </button>
+        <button type="button" onClick={onClear}>
+          Limpar
+        </button>
+      </div>
+    </div>
   );
 }

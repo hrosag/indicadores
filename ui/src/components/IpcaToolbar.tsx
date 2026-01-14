@@ -15,6 +15,9 @@ type IpcaToolbarProps = {
   metrics: MetricOption[];
   loading: boolean;
   isAdmin: boolean;
+  availableMin?: string;
+  availableMax?: string;
+  helperMessage?: string | null;
   onStartChange: (value: string) => void;
   onEndChange: (value: string) => void;
   onAutoChange: (value: boolean) => void;
@@ -32,6 +35,9 @@ export default function IpcaToolbar({
   metrics,
   loading,
   isAdmin,
+  availableMin,
+  availableMax,
+  helperMessage,
   onStartChange,
   onEndChange,
   onAutoChange,
@@ -51,6 +57,21 @@ export default function IpcaToolbar({
         background: "#f5f5f7",
       }}
     >
+      {helperMessage && (
+        <div
+          role="status"
+          style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            background: "#fff7ed",
+            border: "1px solid #fed7aa",
+            color: "#9a3412",
+            fontSize: 12,
+          }}
+        >
+          {helperMessage}
+        </div>
+      )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-end" }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "#444" }}>Start (YYYY-MM)</span>
@@ -59,6 +80,8 @@ export default function IpcaToolbar({
             value={start}
             onChange={(event) => onStartChange(event.target.value)}
             disabled={auto}
+            min={availableMin || undefined}
+            max={availableMax || undefined}
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ccc" }}
           />
         </label>
@@ -69,6 +92,8 @@ export default function IpcaToolbar({
             value={end}
             onChange={(event) => onEndChange(event.target.value)}
             disabled={auto}
+            min={availableMin || undefined}
+            max={availableMax || undefined}
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ccc" }}
           />
         </label>

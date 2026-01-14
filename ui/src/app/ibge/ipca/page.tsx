@@ -5,7 +5,14 @@ import IpcaTable from "../../../components/IpcaTable";
 import IpcaToolbar, { MetricOption } from "../../../components/IpcaToolbar";
 import MainMetricChart from "../../../components/MainMetricChart";
 import MiniMetricCharts from "../../../components/MiniMetricCharts";
-import { fetchIpcaMonthly, getMinMaxDate, IpcaRow, MetricKey } from "../../../lib/ipca";
+import { shiftMonth } from "../../../lib/date";
+import {
+  fetchIpcaMinMaxDate,
+  fetchIpcaMonthly,
+  getMinMaxDate,
+  IpcaRow,
+  MetricKey,
+} from "../../../lib/ipca";
 
 const METRICS: MetricOption[] = [
   { key: "var_m", label: "Mês" },
@@ -21,28 +28,66 @@ export default function Page() {
   const [rows, setRows] = useState<IpcaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [autoRange, setAutoRange] = useState(true);
+  const [autoRange, setAutoRange] = useState(false);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(DEFAULT_METRIC);
   const [resetKey, setResetKey] = useState(0);
   const [rangeLabel, setRangeLabel] = useState({ min: "", max: "" });
+  const [availableRange, setAvailableRange] = useState({ min: "", max: "" });
+  const [helperMessage, setHelperMessage] = useState<string | null>(null);
 
   // TODO: integrar com o mecanismo real de role/claims.
   const isAdmin = false;
 
-  const loadData = async (options?: { keepLoading?: boolean }) => {
+  const getDefaultRange = (maxValue: string) => ({
+    start: shiftMonth(maxValue, -11),
+    end: maxValue,
+  });
+
+  const clampManualRange = (valueStart: string, valueEnd: string) => {
+    let nextStart = valueStart;
+    let nextEnd = valueEnd;
+    let message: string | null = null;
+
+    if (availableRange.min && nextStart && nextStart < availableRange.min) {
+      nextStart = availableRange.min;
+      message = "Intervalo ajustado ao mínimo disponível.";
+    }
+
+    if (availableRange.max && nextEnd && nextEnd > availableRange.max) {
+      nextEnd = availableRange.max;
+      message = "Intervalo ajustado ao máximo disponível.";
+    }
+
+    if (nextStart && nextEnd && nextStart > nextEnd) {
+      [nextStart, nextEnd] = [nextEnd, nextStart];
+      message = "Intervalo ajustado para manter início ≤ fim.";
+    }
+
+    return { start: nextStart, end: nextEnd, message };
+  };
+
+  const loadData = async (options?: {
+    auto?: boolean;
+    start?: string;
+    end?: string;
+    keepLoading?: boolean;
+  }) => {
     if (!options?.keepLoading) setLoading(true);
     setError(null);
 
     try {
-      const data = await fetchIpcaMonthly({ start, end, auto: autoRange });
+      const auto = options?.auto ?? autoRange;
+      const startValue = options?.start ?? start;
+      const endValue = options?.end ?? end;
+      const data = await fetchIpcaMonthly({ start: startValue, end: endValue, auto });
       setRows(data);
       const minMax = getMinMaxDate(data);
       setRangeLabel(minMax);
-      if (autoRange) {
-        setStart(minMax.min);
-        setEnd(minMax.max);
+      if (!auto) {
+        setStart(startValue);
+        setEnd(endValue);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro inesperado ao buscar dados.";
@@ -53,7 +98,27 @@ export default function Page() {
   };
 
   useEffect(() => {
-    void loadData();
+    const bootstrap = async () => {
+      try {
+        const range = await fetchIpcaMinMaxDate();
+        setAvailableRange(range);
+        const defaultRange = range.max ? getDefaultRange(range.max) : { start: "", end: "" };
+        setAutoRange(false);
+        setStart(defaultRange.start);
+        setEnd(defaultRange.end);
+        await loadData({
+          auto: false,
+          start: defaultRange.start,
+          end: defaultRange.end,
+          keepLoading: true,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Erro inesperado ao buscar intervalo.";
+        setError(message);
+        setLoading(false);
+      }
+    };
+    void bootstrap();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -67,21 +132,66 @@ export default function Page() {
     [selectedMetric]
   );
 
-  const handleReset = () => {
-    setAutoRange(true);
-    setStart("");
-    setEnd("");
+  const handleReset = async () => {
     setSelectedMetric(DEFAULT_METRIC);
     setResetKey((prev) => prev + 1);
-    void loadData();
+    setHelperMessage(null);
+    setError(null);
+    try {
+      const range = await fetchIpcaMinMaxDate();
+      setAvailableRange(range);
+      const defaultRange = range.max ? getDefaultRange(range.max) : { start: "", end: "" };
+      setAutoRange(false);
+      setStart(defaultRange.start);
+      setEnd(defaultRange.end);
+      await loadData({ auto: false, start: defaultRange.start, end: defaultRange.end });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro inesperado ao resetar.";
+      setError(message);
+    }
   };
 
   const handleLoad = () => {
-    if (!autoRange && (!start || !end)) {
+    if (autoRange) {
+      setHelperMessage(null);
+      void loadData({ auto: true });
+      return;
+    }
+
+    let nextStart = start;
+    let nextEnd = end;
+    let message: string | null = null;
+
+    if (!nextStart || !nextEnd) {
+      if (availableRange.max) {
+        const defaultRange = getDefaultRange(availableRange.max);
+        nextStart = defaultRange.start;
+        nextEnd = defaultRange.end;
+        message = "Intervalo padrão aplicado (últimos 12 meses).";
+      }
+    }
+
+    if (!nextStart || !nextEnd) {
       setError("Informe Start e End para o modo manual.");
       return;
     }
-    void loadData();
+
+    const clamped = clampManualRange(nextStart, nextEnd);
+    setHelperMessage(message ?? clamped.message);
+    void loadData({ auto: false, start: clamped.start, end: clamped.end });
+  };
+
+  const handleAutoChange = (value: boolean) => {
+    setAutoRange(value);
+    if (!value && (!start || !end) && availableRange.max) {
+      const defaultRange = getDefaultRange(availableRange.max);
+      setStart(defaultRange.start);
+      setEnd(defaultRange.end);
+      setHelperMessage("Intervalo padrão aplicado (últimos 12 meses).");
+    }
+    if (value) {
+      setHelperMessage(null);
+    }
   };
 
   const handleExport = async () => {
@@ -123,9 +233,12 @@ export default function Page() {
         metrics={METRICS}
         loading={loading}
         isAdmin={isAdmin}
+        availableMin={availableRange.min}
+        availableMax={availableRange.max}
+        helperMessage={helperMessage}
         onStartChange={setStart}
         onEndChange={setEnd}
-        onAutoChange={setAutoRange}
+        onAutoChange={handleAutoChange}
         onMetricChange={setSelectedMetric}
         onLoad={handleLoad}
         onReset={handleReset}
@@ -154,7 +267,8 @@ export default function Page() {
 
       {!loading && !error && rows.length > 0 && (
         <footer style={{ color: "#6b7280", fontSize: 12 }}>
-          Range atual: {autoRange ? "Auto (min→max)" : `${start} → ${end}`} · Disponível: {rangeLabel.min} → {rangeLabel.max}
+          Range atual: {autoRange ? "Auto (min→max)" : `${start} → ${end}`} · Disponível:{" "}
+          {availableRange.min} → {availableRange.max}
         </footer>
       )}
     </main>
