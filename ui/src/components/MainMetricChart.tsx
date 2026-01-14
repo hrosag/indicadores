@@ -80,10 +80,13 @@ export default function MainMetricChart({
     const isShortSeries = series.length <= 14;
     const xTickIndexes = isShortSeries
       ? []
-      : Array.from({ length: Math.min(6, series.length) }, (_, idx, array) => {
-          if (array.length === 1) return 0;
-          return Math.round((idx * (series.length - 1)) / (array.length - 1));
-        }).filter((value, index, array) => array.indexOf(value) === index);
+      : (() => {
+          const ticksCount = Math.min(6, series.length);
+          return Array.from({ length: ticksCount }, (_, idx) => {
+            if (ticksCount === 1) return 0;
+            return Math.round((idx * (series.length - 1)) / (ticksCount - 1));
+          }).filter((value, index, array) => array.indexOf(value) === index);
+        })();
 
     const xTicks = isShortSeries
       ? points.filter((point) => {
