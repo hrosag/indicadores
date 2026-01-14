@@ -18,11 +18,13 @@ type IpcaToolbarProps = {
   availableMin?: string;
   availableMax?: string;
   helperMessage?: string | null;
+  disableLoad?: boolean;
   onStartChange: (value: string) => void;
   onEndChange: (value: string) => void;
   onAutoChange: (value: boolean) => void;
   onMetricChange: (value: MetricKey) => void;
   onLoad: () => void;
+  onLoadFullHistory: () => void;
   onReset: () => void;
   onExport: () => void;
 };
@@ -38,11 +40,13 @@ export default function IpcaToolbar({
   availableMin,
   availableMax,
   helperMessage,
+  disableLoad,
   onStartChange,
   onEndChange,
   onAutoChange,
   onMetricChange,
   onLoad,
+  onLoadFullHistory,
   onReset,
   onExport,
 }: IpcaToolbarProps) {
@@ -103,7 +107,7 @@ export default function IpcaToolbar({
             checked={auto}
             onChange={(event) => onAutoChange(event.target.checked)}
           />
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Padrão (min→max)</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Padrão (últimos 12 meses)</span>
         </label>
       </div>
 
@@ -137,7 +141,7 @@ export default function IpcaToolbar({
           <button
             type="button"
             onClick={onLoad}
-            disabled={loading}
+            disabled={loading || disableLoad}
             style={{
               padding: "8px 14px",
               borderRadius: 8,
@@ -149,6 +153,22 @@ export default function IpcaToolbar({
             }}
           >
             {loading ? "Carregando..." : "Carregar"}
+          </button>
+          <button
+            type="button"
+            onClick={onLoadFullHistory}
+            disabled={loading}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: "1px solid #64748b",
+              background: "#fff",
+              color: "#0f172a",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Histórico completo
           </button>
           <button
             type="button"

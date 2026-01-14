@@ -207,17 +207,17 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
       </div>
 
       <div style={{ marginTop: 16, overflowX: "auto" }}>
-        <div
-          ref={containerRef}
-          onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-          style={{
-            maxHeight: viewportHeight,
-            overflowY: "auto",
-            border: "1px solid #e5e7eb",
-            borderRadius: 12,
-          }}
-        >
-          <div style={{ minWidth: gridMinWidth, width: "100%" }}>
+        <div style={{ display: "inline-block", minWidth: gridMinWidth, width: "fit-content" }}>
+          <div
+            ref={containerRef}
+            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+            style={{
+              maxHeight: viewportHeight,
+              overflowY: "auto",
+              border: "1px solid #e5e7eb",
+              borderRadius: 12,
+            }}
+          >
             <div
               style={{
                 display: "grid",
@@ -229,7 +229,7 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
                 background: "#f3f4f6",
                 borderBottom: "1px solid #e5e7eb",
                 padding: "8px 0",
-                width: "100%",
+                width: "fit-content",
               }}
             >
               <div
@@ -325,13 +325,13 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
             ) : pageRows.length === 0 ? (
               <div style={{ padding: 16 }}>Nenhum registro.</div>
             ) : (
-              <div style={{ height: totalHeight, position: "relative" }}>
+              <div style={{ height: totalHeight, position: "relative", width: "fit-content" }}>
                 <div
                   style={{
                     position: "absolute",
                     top: startIndex * rowHeight,
                     left: 0,
-                    right: 0,
+                    width: "fit-content",
                   }}
                 >
                   {visibleRows.map((row) => (
@@ -343,7 +343,7 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
                         borderBottom: "1px solid #f3f4f6",
                         alignItems: "center",
                         height: rowHeight,
-                        width: "100%",
+                        width: "fit-content",
                       }}
                     >
                       <div

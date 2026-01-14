@@ -9,12 +9,19 @@ const formatPercentLabel = (value: number | null) => {
   return formatPercentBR(value) || "-";
 };
 
+const formatYMShort = (ym: string) => {
+  const [year, month] = ym.split("-");
+  return `${month}/${year.slice(2)}`;
+};
+
 type MainMetricChartProps = {
   rows: IpcaRow[];
   metric: MetricKey;
   metricLabel: string;
   loading: boolean;
   error: string | null;
+  showDataLabels?: boolean;
+  onShowDataLabelsChange?: (value: boolean) => void;
   onRetry: () => void;
 };
 
@@ -24,6 +31,8 @@ export default function MainMetricChart({
   metricLabel,
   loading,
   error,
+  showDataLabels,
+  onShowDataLabelsChange,
   onRetry,
 }: MainMetricChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -70,11 +79,23 @@ export default function MainMetricChart({
     const yStep = range / (yTicksCount - 1);
     const yTicks = Array.from({ length: yTicksCount }, (_, idx) => yMin + yStep * idx);
 
-    const xTicksCount = Math.min(6, series.length);
-    const xTickIndexes = Array.from({ length: xTicksCount }, (_, idx) => {
-      if (xTicksCount === 1) return 0;
-      return Math.round((idx * (series.length - 1)) / (xTicksCount - 1));
-    }).filter((value, index, array) => array.indexOf(value) === index);
+    const isShortSeries = series.length <= 14;
+    const xTickIndexes = isShortSeries
+      ? []
+      : (() => {
+          const ticksCount = Math.min(6, series.length);
+          return Array.from({ length: ticksCount }, (_, idx) => {
+            if (ticksCount === 1) return 0;
+            return Math.round((idx * (series.length - 1)) / (ticksCount - 1));
+          }).filter((value, index, array) => array.indexOf(value) === index);
+        })();
+
+    const xTicks = isShortSeries
+      ? points.filter((point) => {
+          const month = Number(point.data.split("-")[1]);
+          return [3, 6, 9, 12].includes(month);
+        })
+      : xTickIndexes.map((index) => points[index]).filter(Boolean);
 
     return {
       points,
@@ -87,9 +108,12 @@ export default function MainMetricChart({
       yMin,
       yMax,
       yTicks,
-      xTickIndexes,
+      xTicks,
+      isShortSeries,
     };
   }, [series]);
+
+  const canShowLabels = Boolean(showDataLabels) && series.length <= 36;
 
   if (loading) {
     return (
@@ -165,6 +189,16 @@ export default function MainMetricChart({
             Série mensal — {rows.length} registros
           </p>
         </div>
+        {onShowDataLabelsChange && (
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={Boolean(showDataLabels)}
+              onChange={(event) => onShowDataLabelsChange(event.target.checked)}
+            />
+            <span style={{ fontWeight: 600, color: "#334155" }}>Exibir valores</span>
+          </label>
+        )}
       </div>
 
       {chart ? (
@@ -193,7 +227,12 @@ export default function MainMetricChart({
                 whiteSpace: "nowrap",
               }}
             >
-              {chart.points[hoverIndex].data} · {formatPercentLabel(chart.points[hoverIndex].value)}
+              {(() => {
+                const point = chart.points[hoverIndex];
+                const label = formatPercentBR(point.value as number) || "-";
+                const suffix = (point.value as number) < 0 ? " (negativo)" : "";
+                return `${point.data} · ${label}${suffix}`;
+              })()}
             </div>
           )}
           <svg
@@ -212,6 +251,33 @@ export default function MainMetricChart({
               setTooltipBounds(null);
             }}
           >
+            {(() => {
+              const hasZero = chart.min < 0 && chart.max > 0;
+              if (!hasZero) return null;
+              const yZero =
+                chart.paddingY +
+                ((chart.max - 0) / (chart.max - chart.min)) *
+                  (chart.height - chart.paddingY * 2);
+              return (
+                <g>
+                  <rect
+                    x={chart.paddingX}
+                    y={yZero}
+                    width={chart.width - chart.paddingX * 2}
+                    height={chart.height - yZero - chart.paddingY}
+                    fill="#fef2f2"
+                  />
+                  <line
+                    x1={chart.paddingX}
+                    x2={chart.width - chart.paddingX}
+                    y1={yZero}
+                    y2={yZero}
+                    stroke="#e5e7eb"
+                    strokeDasharray="4 4"
+                  />
+                </g>
+              );
+            })()}
             {chart.yTicks.map((tick) => {
               const y =
                 chart.paddingY +
@@ -246,11 +312,9 @@ export default function MainMetricChart({
               );
             })}
 
-            {chart.xTickIndexes.map((tickIndex) => {
-              const point = chart.points[tickIndex];
+            {chart.xTicks.map((point) => {
               if (!point) return null;
-              const [year, month] = point.data.split("-");
-              const label = month && year ? `${month}/${year.slice(-2)}` : point.data;
+              const label = formatYMShort(point.data);
               return (
                 <g key={`x-tick-${point.data}`}>
                   <line
@@ -258,7 +322,7 @@ export default function MainMetricChart({
                     x2={point.x}
                     y1={chart.paddingY}
                     y2={chart.height - chart.paddingY}
-                    stroke="#f3f4f6"
+                    stroke="#f1f5f9"
                   />
                   <line
                     x1={point.x}
@@ -299,17 +363,26 @@ export default function MainMetricChart({
               strokeWidth="2"
               points={chart.points.map((point) => `${point.x},${point.y}`).join(" ")}
             />
-            {chart.points.map((point, idx) => (
-              <circle
-                key={`${point.data}-${metric}`}
-                cx={point.x}
-                cy={point.y}
-                r={4}
-                fill={idx === hoverIndex ? "#1d4ed8" : "#93c5fd"}
-                onMouseEnter={() => setHoverIndex(idx)}
-                onMouseLeave={() => setHoverIndex(null)}
-              />
-            ))}
+            {chart.points.map((point, idx) => {
+              const isNegative = (point.value as number) < 0;
+              return (
+                <g key={`${point.data}-${metric}`}>
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={isNegative ? 5 : 4}
+                    fill={isNegative ? "#ef4444" : idx === hoverIndex ? "#1d4ed8" : "#93c5fd"}
+                    onMouseEnter={() => setHoverIndex(idx)}
+                    onMouseLeave={() => setHoverIndex(null)}
+                  />
+                  {canShowLabels && (
+                    <text x={point.x + 6} y={point.y - 6} fontSize="11" fill="#6b7280">
+                      {formatPercentBR(point.value as number)}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
           </svg>
         </div>
       ) : (
