@@ -2,10 +2,10 @@
 
 import { useMemo } from "react";
 import { formatPercentBR } from "../lib/format";
-import { IpcaRow, MetricKey } from "../lib/ipca";
+import type { IndicatorRowBase, MetricKey } from "../lib/indicatorTypes";
 import { MetricOption } from "./IpcaToolbar";
 
-const sparklinePoints = (rows: IpcaRow[], metric: MetricKey) => {
+const sparklinePoints = (rows: IndicatorRowBase[], metric: MetricKey) => {
   const values = rows.map((row) => row[metric]).filter((value) => value !== null) as number[];
   if (values.length === 0) return "";
   const min = Math.min(...values);
@@ -21,7 +21,7 @@ const sparklinePoints = (rows: IpcaRow[], metric: MetricKey) => {
 };
 
 type MiniMetricChartsProps = {
-  rows: IpcaRow[];
+  rows: IndicatorRowBase[];
   metrics: MetricOption[];
   activeMetric: MetricKey;
   onSelect: (metric: MetricKey) => void;

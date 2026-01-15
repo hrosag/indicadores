@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatPercentBR } from "../lib/format";
-import { IpcaRow, MetricKey } from "../lib/ipca";
+import type { IndicatorRowBase, MetricKey } from "../lib/indicatorTypes";
 
 type SortState = {
-  key: keyof IpcaRow;
+  key: keyof IndicatorRowBase;
   direction: "asc" | "desc";
 };
 
@@ -15,7 +15,7 @@ type NumericFilter = {
 };
 
 type IpcaTableProps = {
-  rows: IpcaRow[];
+  rows: IndicatorRowBase[];
   loading: boolean;
   resetKey: number;
 };
@@ -89,7 +89,7 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
     var_ano: { min: "", max: "" },
     var_12_m: { min: "", max: "" },
   });
-  const [openFilter, setOpenFilter] = useState<keyof IpcaRow | null>(null);
+  const [openFilter, setOpenFilter] = useState<keyof IndicatorRowBase | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -155,7 +155,7 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
   const endIndex = Math.min(pageRows.length, Math.ceil((scrollTop + viewportHeight) / rowHeight) + 4);
   const visibleRows = pageRows.slice(startIndex, endIndex);
 
-  const handleSort = (key: keyof IpcaRow) => {
+  const handleSort = (key: keyof IndicatorRowBase) => {
     setSort((current) => {
       if (current.key === key) {
         return { key, direction: current.direction === "asc" ? "desc" : "asc" };

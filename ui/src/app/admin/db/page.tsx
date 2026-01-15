@@ -11,11 +11,14 @@ export default function AdminDbPage() {
   const [ibgeOpen, setIbgeOpen] = useState(true);
   const [ipcaOpen, setIpcaOpen] = useState(true);
   const [ipca15Open, setIpca15Open] = useState(true);
+  const [inpcOpen, setInpcOpen] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
   const [loadingInitialIpca, setLoadingInitialIpca] = useState(false);
   const [loadingCurrentIpca, setLoadingCurrentIpca] = useState(false);
   const [loadingInitialIpca15, setLoadingInitialIpca15] = useState(false);
   const [loadingCurrentIpca15, setLoadingCurrentIpca15] = useState(false);
+  const [loadingInitialInpc, setLoadingInitialInpc] = useState(false);
+  const [loadingCurrentInpc, setLoadingCurrentInpc] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -226,6 +229,70 @@ export default function AdminDbPage() {
                   }}
                 >
                   {loadingCurrentIpca15 ? "Rodando..." : "Atualizar mês atual"}
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => setInpcOpen((v) => !v)}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #eee",
+                background: "#fff",
+                textAlign: "left",
+                fontWeight: 700,
+              }}
+            >
+              INPC {inpcOpen ? "▾" : "▸"}
+            </button>
+
+            {inpcOpen && (
+              <div style={{ paddingLeft: 12, display: "grid", gap: 10 }}>
+                <button
+                  onClick={() =>
+                    runIngest(
+                      "initial",
+                      "ibge_inpc_1736",
+                      setLoadingInitialInpc,
+                    )
+                  }
+                  disabled={loadingInitialInpc}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #222",
+                    background: loadingInitialInpc ? "#444" : "#222",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {loadingInitialInpc
+                    ? "Rodando..."
+                    : "Carga inicial (histórico)"}
+                </button>
+
+                <button
+                  onClick={() =>
+                    runIngest(
+                      "current",
+                      "ibge_inpc_1736",
+                      setLoadingCurrentInpc,
+                    )
+                  }
+                  disabled={loadingCurrentInpc}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #222",
+                    background: loadingCurrentInpc ? "#444" : "#222",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {loadingCurrentInpc ? "Rodando..." : "Atualizar mês atual"}
                 </button>
               </div>
             )}

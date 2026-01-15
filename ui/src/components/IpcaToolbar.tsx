@@ -1,6 +1,6 @@
 "use client";
 
-import { MetricKey } from "../lib/ipca";
+import type { MetricKey } from "../lib/indicatorTypes";
 
 export type MetricOption = {
   key: MetricKey;
