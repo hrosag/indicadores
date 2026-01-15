@@ -6,6 +6,7 @@ import IpcaToolbar, { MetricOption } from "../../../components/IpcaToolbar";
 import MainMetricChart from "../../../components/MainMetricChart";
 import MiniMetricCharts from "../../../components/MiniMetricCharts";
 import { shiftMonth } from "../../../lib/date";
+import useIsAdmin from "../../../lib/useIsAdmin";
 import {
   fetchIpcaMinMaxDate,
   fetchIpcaMonthly,
@@ -39,8 +40,7 @@ export default function Page() {
   const [helperMessage, setHelperMessage] = useState<string | null>(null);
   const [showDataLabels, setShowDataLabels] = useState(false);
 
-  // TODO: integrar com o mecanismo real de role/claims.
-  const isAdmin = false;
+  const { isAdmin } = useIsAdmin();
 
   const getDefaultRange = (maxValue: string) => ({
     start: shiftMonth(maxValue, -11),

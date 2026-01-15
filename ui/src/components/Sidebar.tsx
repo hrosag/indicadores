@@ -2,63 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabaseClient";
+import { useMemo, useState } from "react";
+import useIsAdmin from "../lib/useIsAdmin";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [ibgeOpen, setIbgeOpen] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { isAdmin } = useIsAdmin();
 
   const isIpcaActive = useMemo(() => pathname === "/ibge/ipca", [pathname]);
   const isIpca15Active = useMemo(() => pathname === "/ibge/ipca15", [pathname]);
 
   const sidebarWidth = collapsed ? 64 : 260;
   const adminHref = isAdmin ? "/admin/db" : "/admin/login";
-
-  const loadAdminStatus = async (currentSession: Session | null) => {
-    if (!currentSession?.user) {
-      setIsAdmin(false);
-      return;
-    }
-
-    const { data } = await supabase
-      .from("admin_users")
-      .select("is_active")
-      .eq("user_id", currentSession.user.id)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    setIsAdmin(Boolean(data?.is_active));
-  };
-
-  useEffect(() => {
-    let active = true;
-
-    const initSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!active) {
-        return;
-      }
-      await loadAdminStatus(data.session);
-    };
-
-    initSession();
-
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!active) {
-        return;
-      }
-      loadAdminStatus(nextSession);
-    });
-
-    return () => {
-      active = false;
-      data.subscription.unsubscribe();
-    };
-  }, []);
 
   return (
     <aside
