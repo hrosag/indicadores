@@ -3,7 +3,7 @@ import type { IndicatorRowBase, MetricKey } from "./indicatorTypes";
 
 export type { MetricKey };
 
-export type IpcaRow = IndicatorRowBase & {
+export type InpcRow = IndicatorRowBase & {
   ano: number | null;
   mes: string | null;
   num_indice: number | null;
@@ -26,7 +26,7 @@ const toStringValue = (value: string | number | null | undefined) => {
   return String(value);
 };
 
-export const parseRow = (row: Record<string, string | number | null>): IpcaRow => ({
+export const parseRow = (row: Record<string, string | number | null>): InpcRow => ({
   data: String(row.data ?? ""),
   ano: toNumber(row.ano),
   mes: toStringValue(row.mes),
@@ -38,20 +38,20 @@ export const parseRow = (row: Record<string, string | number | null>): IpcaRow =
   var_12_m: toNumber(row.var_12_m),
 });
 
-export const getMinMaxDate = (rows: IpcaRow[]) => {
+export const getMinMaxDate = (rows: InpcRow[]) => {
   if (rows.length === 0) return { min: "", max: "" };
   const sorted = [...rows].sort((a, b) => a.data.localeCompare(b.data));
   return { min: sorted[0].data, max: sorted[sorted.length - 1].data };
 };
 
-export const fetchIpcaMinMaxDate = async () => {
+export const fetchInpcMinMaxDate = async () => {
   const qMin = supabase
-    .from("vw_ipca15_3065_monthly")
+    .from("vw_inpc_1736_monthly")
     .select("data")
     .order("data", { ascending: true })
     .limit(1);
   const qMax = supabase
-    .from("vw_ipca15_3065_monthly")
+    .from("vw_inpc_1736_monthly")
     .select("data")
     .order("data", { ascending: false })
     .limit(1);
@@ -70,9 +70,9 @@ export const fetchIpcaMinMaxDate = async () => {
   };
 };
 
-export const fetchIpcaMonthly = async ({ start, end, auto }: FetchParams) => {
+export const fetchInpcMonthly = async ({ start, end, auto }: FetchParams) => {
   let query = supabase
-    .from("vw_ipca15_3065_monthly")
+    .from("vw_inpc_1736_monthly")
     .select("*")
     .order("data", { ascending: true });
 

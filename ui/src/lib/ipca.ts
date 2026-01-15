@@ -1,14 +1,12 @@
 import { supabase } from "./supabaseClient";
+import type { IndicatorRowBase, MetricKey } from "./indicatorTypes";
 
-export type MetricKey = "var_m" | "var_3_m" | "var_6_m" | "var_ano" | "var_12_m";
+export type { MetricKey };
 
-export type IpcaRow = {
-  data: string;
-  var_m: number | null;
-  var_3_m: number | null;
-  var_6_m: number | null;
-  var_ano: number | null;
-  var_12_m: number | null;
+export type IpcaRow = IndicatorRowBase & {
+  ano: number | null;
+  mes: string | null;
+  num_indice?: number | null;
 };
 
 type FetchParams = {
@@ -23,8 +21,16 @@ const toNumber = (value: string | number | null | undefined) => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
+const toStringValue = (value: string | number | null | undefined) => {
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+};
+
 export const parseRow = (row: Record<string, string | number | null>): IpcaRow => ({
   data: String(row.data ?? ""),
+  ano: toNumber(row.ano),
+  mes: toStringValue(row.mes),
+  num_indice: toNumber(row.num_indice),
   var_m: toNumber(row.var_m),
   var_3_m: toNumber(row.var_3_m),
   var_6_m: toNumber(row.var_6_m),

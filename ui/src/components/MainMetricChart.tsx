@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { formatPercentBR } from "../lib/format";
-import { IpcaRow, MetricKey } from "../lib/ipca";
+import type { IndicatorRowBase, MetricKey } from "../lib/indicatorTypes";
 
 const formatPercentLabel = (value: number | null) => {
   if (value === null) return "-";
@@ -15,7 +15,7 @@ const formatYMShort = (ym: string) => {
 };
 
 type MainMetricChartProps = {
-  rows: IpcaRow[];
+  rows: IndicatorRowBase[];
   metric: MetricKey;
   metricLabel: string;
   loading: boolean;
