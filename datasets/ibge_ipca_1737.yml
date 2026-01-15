@@ -1,3 +1,4 @@
 name: "IBGE SIDRA - IPCA (Tabela 1737) - Brasil - todas variáveis - dez/2025"
 url: "https://apisidra.ibge.gov.br/values/t/1737/n1/all/v/all/p/202512/d/v63%202,v69%202,v2263%202,v2264%202,v2265%202,v2266%2013"
+target_table: "ipca_1737_raw"
 output_xlsx: "output/ipca_1737_allvars_202512.xlsx"

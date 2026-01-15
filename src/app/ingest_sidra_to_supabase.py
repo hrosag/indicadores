@@ -19,12 +19,17 @@ import yaml
 class Job:
     name: str
     url: str
+    target_table: str
 
 
 def load_job(path: str) -> Job:
     with open(path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
-    return Job(name=str(cfg["name"]), url=str(cfg["url"]))
+    return Job(
+        name=str(cfg["name"]),
+        url=str(cfg["url"]),
+        target_table=str(cfg["target_table"]),
+    )
 
 
 def build_http_session() -> requests.Session:
@@ -215,7 +220,7 @@ def main() -> None:
         records = sanitize_records(records)
         if not records:
             raise RuntimeError("Sem registros retornados pela API SIDRA.")
-        upsert_supabase("ipca_1737_raw", records)
+        upsert_supabase(job.target_table, records)
         total_records = len(records)
     else:
         try:
@@ -239,7 +244,7 @@ def main() -> None:
             records = sanitize_records(records)
             if not records:
                 raise RuntimeError("Sem registros retornados pela API SIDRA.")
-            upsert_supabase("ipca_1737_raw", records)
+            upsert_supabase(job.target_table, records)
             total_records += len(records)
             print(f"Período {period}: {len(records)} registros")
 
@@ -247,7 +252,7 @@ def main() -> None:
         print(f"Períodos processados: {len(periods)}")
 
     print(
-        f"OK: inseridos/upsert {total_records} registros em ipca_1737_raw ({args.dataset}/{args.action})"
+        f"OK: inseridos/upsert {total_records} registros em {job.target_table} ({args.dataset}/{args.action})"
     )
 
 

@@ -10,6 +10,7 @@ export default function AdminDbPage() {
   const router = useRouter();
   const [ibgeOpen, setIbgeOpen] = useState(true);
   const [ipcaOpen, setIpcaOpen] = useState(true);
+  const [ipca15Open, setIpca15Open] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
   const [loadingInitial, setLoadingInitial] = useState(false);
   const [loadingCurrent, setLoadingCurrent] = useState(false);
@@ -42,7 +43,7 @@ export default function AdminDbPage() {
     };
   }, [router]);
 
-  const runIngest = async (action: IngestAction) => {
+  const runIngest = async (action: IngestAction, dataset: string) => {
     setMsg(null);
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
@@ -62,7 +63,7 @@ export default function AdminDbPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          dataset: "ibge_ipca_1737",
+          dataset,
           action,
         }),
       });
@@ -117,7 +118,7 @@ export default function AdminDbPage() {
             {ipcaOpen && (
               <div style={{ paddingLeft: 12, display: "grid", gap: 10 }}>
                 <button
-                  onClick={() => runIngest("initial")}
+                  onClick={() => runIngest("initial", "ibge_ipca_1737")}
                   disabled={loadingInitial}
                   style={{
                     padding: "10px 12px",
@@ -133,7 +134,7 @@ export default function AdminDbPage() {
                 </button>
 
                 <button
-                  onClick={() => runIngest("current")}
+                  onClick={() => runIngest("current", "ibge_ipca_1737")}
                   disabled={loadingCurrent}
                   style={{
                     padding: "10px 12px",
@@ -147,10 +148,60 @@ export default function AdminDbPage() {
                 >
                   {loadingCurrent ? "Rodando..." : "Atualizar mês atual"}
                 </button>
-
-                {msg && <div style={{ fontSize: 13, color: "#444" }}>{msg}</div>}
               </div>
             )}
+
+            <button
+              onClick={() => setIpca15Open((v) => !v)}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #eee",
+                background: "#fff",
+                textAlign: "left",
+                fontWeight: 700,
+              }}
+            >
+              IPCA-15 {ipca15Open ? "▾" : "▸"}
+            </button>
+
+            {ipca15Open && (
+              <div style={{ paddingLeft: 12, display: "grid", gap: 10 }}>
+                <button
+                  onClick={() => runIngest("initial", "ibge_ipca15_3065")}
+                  disabled={loadingInitial}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #222",
+                    background: loadingInitial ? "#444" : "#222",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {loadingInitial ? "Rodando..." : "Carga inicial (histórico)"}
+                </button>
+
+                <button
+                  onClick={() => runIngest("current", "ibge_ipca15_3065")}
+                  disabled={loadingCurrent}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #222",
+                    background: loadingCurrent ? "#444" : "#222",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {loadingCurrent ? "Rodando..." : "Atualizar mês atual"}
+                </button>
+              </div>
+            )}
+
+            {msg && <div style={{ fontSize: 13, color: "#444" }}>{msg}</div>}
           </div>
         )}
       </div>
