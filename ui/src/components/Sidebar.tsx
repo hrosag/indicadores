@@ -13,6 +13,7 @@ export default function Sidebar() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   const isIpcaActive = useMemo(() => pathname === "/ibge/ipca", [pathname]);
+  const isIpca15Active = useMemo(() => pathname === "/ibge/ipca15", [pathname]);
 
   const sidebarWidth = collapsed ? 64 : 260;
   const adminHref = isAdmin ? "/admin/db" : "/admin/login";
@@ -137,6 +138,20 @@ export default function Sidebar() {
               }}
             >
               {collapsed ? "IP" : "IPCA"}
+            </Link>
+            <Link
+              href="/ibge/ipca15"
+              style={{
+                display: "block",
+                borderRadius: 8,
+                padding: "10px 10px",
+                textDecoration: "none",
+                border: "1px solid #eee",
+                background: isIpca15Active ? "#f3f3f3" : "#fff",
+                fontWeight: isIpca15Active ? 700 : 500,
+              }}
+            >
+              {collapsed ? "I15" : "IPCA-15"}
             </Link>
           </div>
         )}
