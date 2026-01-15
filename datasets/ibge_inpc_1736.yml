@@ -1,0 +1,3 @@
+name: "IBGE SIDRA - INPC (Tabela 1736) - Brasil - todas variáveis"
+url: "https://apisidra.ibge.gov.br/values/t/1736/n1/all/v/all/p/last%201/d/v44%202,v68%202,v2289%2013,v2290%202,v2291%202,v2292%202"
+target_table: "inpc_1736_raw"
