@@ -7,7 +7,8 @@ on:
         description: "Dataset logical name"
         required: true
         default: "ibge_ipca_1737"
-        type: string
+        type: choice
+        options: [ibge_ipca_1737, ibge_ipca15_3065]
       action:
         description: "initial = full load, current = last period only"
         required: true
@@ -34,4 +35,4 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          python src/app/ingest_sidra_to_supabase.py --dataset "${{ inputs.dataset }}" --action "${{ inputs.action }}" --config "datasets/ibge_ipca_1737.yml"
+          python src/app/ingest_sidra_to_supabase.py --dataset "${{ inputs.dataset }}" --action "${{ inputs.action }}" --config "datasets/${{ inputs.dataset }}.yml"

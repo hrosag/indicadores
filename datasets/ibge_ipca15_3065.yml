@@ -1,0 +1,3 @@
+name: "IBGE SIDRA - IPCA-15 (Tabela 3065) - Brasil - todas variáveis - dez/2025"
+url: "https://apisidra.ibge.gov.br/values/t/3065/n1/all/v/all/p/202512/d/v355%202,v356%202,v1117%2013,v1118%202,v1119%202,v1120%202"
+target_table: "ipca15_3065_raw"
