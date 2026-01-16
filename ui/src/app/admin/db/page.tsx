@@ -12,6 +12,7 @@ export default function AdminDbPage() {
   const [ipcaOpen, setIpcaOpen] = useState(true);
   const [ipca15Open, setIpca15Open] = useState(true);
   const [inpcOpen, setInpcOpen] = useState(true);
+  const [ippOpen, setIppOpen] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
   const [loadingInitialIpca, setLoadingInitialIpca] = useState(false);
   const [loadingCurrentIpca, setLoadingCurrentIpca] = useState(false);
@@ -19,6 +20,8 @@ export default function AdminDbPage() {
   const [loadingCurrentIpca15, setLoadingCurrentIpca15] = useState(false);
   const [loadingInitialInpc, setLoadingInitialInpc] = useState(false);
   const [loadingCurrentInpc, setLoadingCurrentInpc] = useState(false);
+  const [loadingInitialIpp, setLoadingInitialIpp] = useState(false);
+  const [loadingCurrentIpp, setLoadingCurrentIpp] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -293,6 +296,68 @@ export default function AdminDbPage() {
                   }}
                 >
                   {loadingCurrentInpc ? "Rodando..." : "Atualizar mês atual"}
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => setIppOpen((v) => !v)}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #eee",
+                background: "#fff",
+                textAlign: "left",
+                fontWeight: 700,
+              }}
+            >
+              IPP {ippOpen ? "▾" : "▸"}
+            </button>
+
+            {ippOpen && (
+              <div style={{ paddingLeft: 12, display: "grid", gap: 10 }}>
+                <button
+                  onClick={() =>
+                    runIngest(
+                      "initial",
+                      "ibge_ipp_6904",
+                      setLoadingInitialIpp,
+                    )
+                  }
+                  disabled={loadingInitialIpp}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #222",
+                    background: loadingInitialIpp ? "#444" : "#222",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {loadingInitialIpp ? "Rodando..." : "Carga inicial (histórico)"}
+                </button>
+
+                <button
+                  onClick={() =>
+                    runIngest(
+                      "current",
+                      "ibge_ipp_6904",
+                      setLoadingCurrentIpp,
+                    )
+                  }
+                  disabled={loadingCurrentIpp}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #222",
+                    background: loadingCurrentIpp ? "#444" : "#222",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {loadingCurrentIpp ? "Rodando..." : "Atualizar mês atual"}
                 </button>
               </div>
             )}
