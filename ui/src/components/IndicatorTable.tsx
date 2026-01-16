@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatPercentBR } from "../lib/format";
 import type { IndicatorRowBase, MetricKey } from "../lib/indicatorTypes";
+import type { MetricOption } from "./IpcaToolbar";
 
 type SortState = {
   key: keyof IndicatorRowBase;
@@ -14,14 +15,14 @@ type NumericFilter = {
   max: string;
 };
 
-type IpcaTableProps = {
+type IndicatorTableProps = {
   rows: IndicatorRowBase[];
   loading: boolean;
   resetKey: number;
+  metrics: MetricOption[];
 };
 
-const metricKeys: MetricKey[] = ["var_m", "var_3_m", "var_6_m", "var_ano", "var_12_m"];
-const columnLabels: Record<MetricKey | "data", string> = {
+const columnLabelByKey: Record<MetricKey | "data", string> = {
   data: "Data",
   var_m: "Mês",
   var_3_m: "3 meses",
@@ -29,10 +30,6 @@ const columnLabels: Record<MetricKey | "data", string> = {
   var_ano: "Ano",
   var_12_m: "12 meses",
 };
-
-const gridTemplateColumns =
-  "minmax(110px, 1.2fr) repeat(4, minmax(100px, 1fr)) minmax(110px, 1.1fr)";
-const gridMinWidth = 700;
 
 type FilterPopoverProps = {
   isOpen: boolean;
@@ -77,18 +74,21 @@ function FilterPopover({ isOpen, onClose, children }: FilterPopoverProps) {
   );
 }
 
-export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
+export default function IndicatorTable({ rows, loading, resetKey, metrics }: IndicatorTableProps) {
   const [sort, setSort] = useState<SortState>({ key: "data", direction: "desc" });
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [filterText, setFilterText] = useState("");
-  const [numericFilters, setNumericFilters] = useState<Record<MetricKey, NumericFilter>>({
-    var_m: { min: "", max: "" },
-    var_3_m: { min: "", max: "" },
-    var_6_m: { min: "", max: "" },
-    var_ano: { min: "", max: "" },
-    var_12_m: { min: "", max: "" },
-  });
+  const [numericFilters, setNumericFilters] = useState<Record<MetricKey, NumericFilter>>(
+    () =>
+      metrics.reduce(
+        (acc, metric) => {
+          acc[metric.key] = { min: "", max: "" };
+          return acc;
+        },
+        {} as Record<MetricKey, NumericFilter>
+      )
+  );
   const [openFilter, setOpenFilter] = useState<keyof IndicatorRowBase | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -98,15 +98,19 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
     setPageSize(25);
     setPage(1);
     setFilterText("");
-    setNumericFilters({
-      var_m: { min: "", max: "" },
-      var_3_m: { min: "", max: "" },
-      var_6_m: { min: "", max: "" },
-      var_ano: { min: "", max: "" },
-      var_12_m: { min: "", max: "" },
-    });
+    setNumericFilters(
+      metrics.reduce(
+        (acc, metric) => {
+          acc[metric.key] = { min: "", max: "" };
+          return acc;
+        },
+        {} as Record<MetricKey, NumericFilter>
+      )
+    );
     setOpenFilter(null);
-  }, [resetKey]);
+  }, [metrics, resetKey]);
+
+  const metricKeys = useMemo(() => metrics.map((metric) => metric.key), [metrics]);
 
   const filteredRows = useMemo(() => {
     const text = filterText.trim().toLowerCase();
@@ -120,7 +124,7 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
         return true;
       });
     });
-  }, [rows, filterText, numericFilters]);
+  }, [rows, filterText, numericFilters, metricKeys]);
 
   const sortedRows = useMemo(() => {
     const sorted = [...filteredRows];
@@ -182,6 +186,12 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
     setPage(1);
   };
 
+  const gridTemplateColumns = useMemo(
+    () => `minmax(110px, 1.2fr) repeat(${metricKeys.length}, minmax(100px, 1fr))`,
+    [metricKeys.length]
+  );
+  const gridMinWidth = 110 + metricKeys.length * 110;
+
   return (
     <section
       style={{
@@ -241,7 +251,7 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <button type="button" onClick={() => handleSort("data")} style={{ fontWeight: 600 }}>
-                    {columnLabels.data}{" "}
+                    {columnLabelByKey.data}{" "}
                     {sort.key === "data" ? (sort.direction === "asc" ? "▲" : "▼") : ""}
                   </button>
                   <button
@@ -285,12 +295,14 @@ export default function IpcaTable({ rows, loading, resetKey }: IpcaTableProps) {
                 >
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
                     <button type="button" onClick={() => handleSort(key)} style={{ fontWeight: 600 }}>
-                      {columnLabels[key]}{" "}
+                      {metrics.find((metric) => metric.key === key)?.label ?? columnLabelByKey[key]}{" "}
                       {sort.key === key ? (sort.direction === "asc" ? "▲" : "▼") : ""}
                     </button>
                     <button
                       type="button"
-                      aria-label={`Filtrar ${columnLabels[key]}`}
+                      aria-label={`Filtrar ${
+                        metrics.find((metric) => metric.key === key)?.label ?? columnLabelByKey[key]
+                      }`}
                       onClick={() => setOpenFilter((current) => (current === key ? null : key))}
                       style={{
                         border: "1px solid #d1d5db",
