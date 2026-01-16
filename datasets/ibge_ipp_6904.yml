@@ -1,0 +1,3 @@
+name: "IBGE SIDRA - IPP (Tabela 6904) - Brasil - Indústria Geral"
+url: "https://apisidra.ibge.gov.br/values/t/6904/n1/all/v/all/p/last%201/c543/33586/d/v1394%202,v1395%202,v1396%202,v10008%205"
+target_table: "ipp_6904_raw"

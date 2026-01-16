@@ -8,7 +8,7 @@ on:
         required: true
         default: "ibge_ipca_1737"
         type: choice
-        options: [ibge_ipca_1737, ibge_ipca15_3065, ibge_inpc_1736]
+        options: [ibge_ipca_1737, ibge_ipca15_3065, ibge_inpc_1736, ibge_ipp_6904]
       action:
         description: "initial = full load, current = last period only"
         required: true
