@@ -18,7 +18,7 @@ create table if not exists public.pib_5932_raw (
 );
 
 create unique index if not exists pib_5932_raw_unique_idx
-  on public.pib_5932_raw (d1c, d2c, d3c, coalesce(c11255c, ''));
+  on public.pib_5932_raw (d1c, d2c, d3c);
 
 drop view if exists public.vw_pib_5932_quarterly;
 
