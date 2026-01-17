@@ -1,0 +1,211 @@
+"use client";
+
+import type { PibMetricKey } from "../lib/pib";
+
+export type PibMetricOption = {
+  key: PibMetricKey;
+  label: string;
+};
+
+type PibToolbarProps = {
+  start: string;
+  end: string;
+  auto: boolean;
+  metric: PibMetricKey;
+  metrics: PibMetricOption[];
+  loading: boolean;
+  isAdmin: boolean;
+  availableMin?: string;
+  availableMax?: string;
+  helperMessage?: string | null;
+  disableLoad?: boolean;
+  onStartChange: (value: string) => void;
+  onEndChange: (value: string) => void;
+  onAutoChange: (value: boolean) => void;
+  onMetricChange: (value: PibMetricKey) => void;
+  onLoad: () => void;
+  onLoadFullHistory: () => void;
+  onReset: () => void;
+  onExport: () => void;
+};
+
+export default function PibToolbar({
+  start,
+  end,
+  auto,
+  metric,
+  metrics,
+  loading,
+  isAdmin,
+  availableMin,
+  availableMax,
+  helperMessage,
+  disableLoad,
+  onStartChange,
+  onEndChange,
+  onAutoChange,
+  onMetricChange,
+  onLoad,
+  onLoadFullHistory,
+  onReset,
+  onExport,
+}: PibToolbarProps) {
+  const isLoadDisabled = loading || disableLoad;
+
+  return (
+    <section
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        padding: 16,
+        borderRadius: 12,
+        background: "#f5f5f7",
+      }}
+    >
+      {helperMessage && (
+        <div
+          role="status"
+          style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            background: "#fff7ed",
+            border: "1px solid #fed7aa",
+            color: "#9a3412",
+            fontSize: 12,
+          }}
+        >
+          {helperMessage}
+        </div>
+      )}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-end" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#444" }}>Start (YYYY-MM)</span>
+          <input
+            type="month"
+            value={start}
+            onChange={(event) => onStartChange(event.target.value)}
+            disabled={auto}
+            min={availableMin || undefined}
+            max={availableMax || undefined}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ccc" }}
+          />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#444" }}>End (YYYY-MM)</span>
+          <input
+            type="month"
+            value={end}
+            onChange={(event) => onEndChange(event.target.value)}
+            disabled={auto}
+            min={availableMin || undefined}
+            max={availableMax || undefined}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ccc" }}
+          />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={auto}
+            onChange={(event) => onAutoChange(event.target.checked)}
+          />
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Padrão (últimos 12 trimestres)</span>
+        </label>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+        <div
+          role="radiogroup"
+          aria-label="Métrica principal"
+          style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+        >
+          {metrics.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => onMetricChange(option.key)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: metric === option.key ? "1px solid #0f172a" : "1px solid #ccc",
+                background: metric === option.key ? "#0f172a" : "#fff",
+                color: metric === option.key ? "#fff" : "#111",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={onLoad}
+            disabled={isLoadDisabled}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: `1px solid ${isLoadDisabled ? "#9ca3af" : "#1d4ed8"}`,
+              background: isLoadDisabled ? "#9ca3af" : "#1d4ed8",
+              color: "#fff",
+              fontWeight: 600,
+              cursor: isLoadDisabled ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Carregando..." : "Carregar"}
+          </button>
+          <button
+            type="button"
+            onClick={onLoadFullHistory}
+            disabled={loading}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: "1px solid #64748b",
+              background: "#fff",
+              color: "#0f172a",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Histórico completo
+          </button>
+          <button
+            type="button"
+            onClick={onReset}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: "1px solid #ccc",
+              background: "#fff",
+              color: "#111",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Limpar
+          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={onExport}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid #15803d",
+                background: "#15803d",
+                color: "#fff",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Exportar XLSX
+            </button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}

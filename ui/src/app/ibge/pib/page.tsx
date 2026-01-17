@@ -1,63 +1,46 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import IndicatorTable from "./IndicatorTable";
-import IpcaToolbar, { MetricOption } from "./IpcaToolbar";
-import MainMetricChart from "./MainMetricChart";
-import MiniMetricCharts from "./MiniMetricCharts";
-import { shiftMonth } from "../lib/date";
-import type { IndicatorRowBase, MetricKey } from "../lib/indicatorTypes";
-import useIsAdmin from "../lib/useIsAdmin";
-
-type FetchParams = {
-  start?: string;
-  end?: string;
-  auto: boolean;
-};
-
-type ExportConfig<Row extends IndicatorRowBase> = {
-  headers: string[];
-  sheetName: string;
-  mapRow: (row: Row) => Record<string, string | number | null>;
-  getFileName: (params: {
-    isFullHistory: boolean;
-    start: string;
-    end: string;
-    rangeLabel: { min: string; max: string };
-  }) => string;
-};
-
-type IndicatorPageProps<Row extends IndicatorRowBase> = {
-  title: string;
-  subtitle?: string;
-  metrics: MetricOption[];
-  defaultMetric: MetricKey;
-  fetchMinMaxDate: () => Promise<{ min: string; max: string }>;
-  fetchMonthly: (params: FetchParams) => Promise<Row[]>;
-  getMinMaxDate: (rows: Row[]) => { min: string; max: string };
-  exportConfig?: ExportConfig<Row>;
-  footerText?: string;
-};
-
-export default function IndicatorPage<Row extends IndicatorRowBase>({
-  title,
-  subtitle,
-  metrics,
-  defaultMetric,
-  fetchMinMaxDate,
-  fetchMonthly,
+import MainMetricChart from "../../../components/MainMetricChart";
+import MiniMetricCharts from "../../../components/MiniMetricCharts";
+import PibTable from "../../../components/PibTable";
+import PibToolbar, { PibMetricOption } from "../../../components/PibToolbar";
+import { shiftMonth } from "../../../lib/date";
+import {
+  fetchPibMinMaxDate,
+  fetchPibQuarterly,
   getMinMaxDate,
-  exportConfig,
-  footerText,
-}: IndicatorPageProps<Row>) {
-  const [rows, setRows] = useState<Row[]>([]);
+  PibMetricKey,
+  PibRow,
+} from "../../../lib/pib";
+import useIsAdmin from "../../../lib/useIsAdmin";
+
+const METRICS: PibMetricOption[] = [
+  { key: "var_qoq", label: "Trim/Trim" },
+  { key: "var_yoy", label: "Mesmo tri ano ant." },
+  { key: "var_ytd", label: "Acum. no ano" },
+  { key: "var_4q", label: "Acum. 4 trimestres" },
+];
+
+const DEFAULT_METRIC: PibMetricKey = "var_qoq";
+
+const exportHeaders = ["data", ...METRICS.map((metric) => metric.key)];
+
+const buildMetricExport = (row: PibRow) =>
+  METRICS.reduce<Record<string, string | number | null>>((acc, metric) => {
+    acc[metric.key] = row[metric.key] ?? "";
+    return acc;
+  }, {});
+
+export default function Page() {
+  const [rows, setRows] = useState<PibRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isDefault12m, setIsDefault12m] = useState(true);
+  const [isDefault12q, setIsDefault12q] = useState(true);
   const [isFullHistory, setIsFullHistory] = useState(false);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
-  const [selectedMetric, setSelectedMetric] = useState<MetricKey>(defaultMetric);
+  const [selectedMetric, setSelectedMetric] = useState<PibMetricKey>(DEFAULT_METRIC);
   const [resetKey, setResetKey] = useState(0);
   const [rangeLabel, setRangeLabel] = useState({ min: "", max: "" });
   const [availableRange, setAvailableRange] = useState({ min: "", max: "" });
@@ -68,7 +51,7 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
 
   const getDefaultRange = useCallback(
     (maxValue: string) => ({
-      start: shiftMonth(maxValue, -11),
+      start: shiftMonth(maxValue, -33),
       end: maxValue,
     }),
     []
@@ -114,7 +97,7 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
         const auto = options?.auto ?? false;
         const startValue = options?.start ?? start;
         const endValue = options?.end ?? end;
-        const data = await fetchMonthly({ start: startValue, end: endValue, auto });
+        const data = await fetchPibQuarterly({ start: startValue, end: endValue, auto });
         setRows(data);
         const minMax = getMinMaxDate(data);
         setRangeLabel(minMax);
@@ -129,16 +112,16 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
         setLoading(false);
       }
     },
-    [end, fetchMonthly, getMinMaxDate, start]
+    [end, fetchPibQuarterly, getMinMaxDate, start]
   );
 
   useEffect(() => {
     const bootstrap = async () => {
       try {
-        const range = await fetchMinMaxDate();
+        const range = await fetchPibMinMaxDate();
         setAvailableRange(range);
         const defaultRange = range.max ? getDefaultRange(range.max) : { start: "", end: "" };
-        setIsDefault12m(true);
+        setIsDefault12q(true);
         setIsFullHistory(false);
         setStart(defaultRange.start);
         setEnd(defaultRange.end);
@@ -155,28 +138,28 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
       }
     };
     void bootstrap();
-  }, [fetchMinMaxDate, getDefaultRange, loadData]);
+  }, [fetchPibMinMaxDate, getDefaultRange, loadData]);
 
   const metricLabel = useMemo(
-    () => metrics.find((metric) => metric.key === selectedMetric)?.label ?? "",
-    [metrics, selectedMetric]
+    () => METRICS.find((metric) => metric.key === selectedMetric)?.label ?? "",
+    [selectedMetric]
   );
 
   const otherMetrics = useMemo(
-    () => metrics.filter((metric) => metric.key !== selectedMetric),
-    [metrics, selectedMetric]
+    () => METRICS.filter((metric) => metric.key !== selectedMetric),
+    [selectedMetric]
   );
 
   const handleReset = async () => {
-    setSelectedMetric(defaultMetric);
+    setSelectedMetric(DEFAULT_METRIC);
     setResetKey((prev) => prev + 1);
     setHelperMessage(null);
     setError(null);
     try {
-      const range = await fetchMinMaxDate();
+      const range = await fetchPibMinMaxDate();
       setAvailableRange(range);
       const defaultRange = range.max ? getDefaultRange(range.max) : { start: "", end: "" };
-      setIsDefault12m(true);
+      setIsDefault12q(true);
       setIsFullHistory(false);
       setStart(defaultRange.start);
       setEnd(defaultRange.end);
@@ -188,7 +171,7 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
   };
 
   const handleLoad = () => {
-    if (isDefault12m || isFullHistory) return;
+    if (isDefault12q || isFullHistory) return;
 
     let nextStart = start;
     let nextEnd = end;
@@ -199,7 +182,7 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
         const defaultRange = getDefaultRange(availableRange.max);
         nextStart = defaultRange.start;
         nextEnd = defaultRange.end;
-        message = "Intervalo padrão aplicado (últimos 12 meses).";
+        message = "Intervalo padrão aplicado (últimos 12 trimestres).";
       }
     }
 
@@ -217,7 +200,7 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
   const handleDefaultChange = (value: boolean) => {
     if (value) {
       const nextRange = availableRange.max ? getDefaultRange(availableRange.max) : { start, end };
-      setIsDefault12m(true);
+      setIsDefault12q(true);
       setIsFullHistory(false);
       setStart(nextRange.start);
       setEnd(nextRange.end);
@@ -225,11 +208,11 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
       void loadData({ auto: false, start: nextRange.start, end: nextRange.end });
       return;
     }
-    setIsDefault12m(false);
+    setIsDefault12q(false);
   };
 
   const handleLoadFullHistory = () => {
-    setIsDefault12m(false);
+    setIsDefault12q(false);
     setIsFullHistory(true);
     setHelperMessage(null);
     void loadData({ auto: true });
@@ -240,7 +223,7 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
       void loadData({ auto: true });
       return;
     }
-    if (isDefault12m) {
+    if (isDefault12q) {
       const nextRange = availableRange.max ? getDefaultRange(availableRange.max) : { start, end };
       setStart(nextRange.start);
       setEnd(nextRange.end);
@@ -251,35 +234,36 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
   };
 
   const handleExport = async () => {
-    if (!isAdmin || !exportConfig) return;
+    if (!isAdmin) return;
     const XLSX = await import("xlsx");
-    const exportRows = rows.map((row) => exportConfig.mapRow(row));
+    const exportRows = rows.map((row) => ({
+      data: row.data,
+      ...buildMetricExport(row),
+    }));
     const worksheet = XLSX.utils.json_to_sheet(exportRows, {
-      header: exportConfig.headers,
+      header: exportHeaders,
     });
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, exportConfig.sheetName);
-    const filename = exportConfig.getFileName({ isFullHistory, start, end, rangeLabel });
+    XLSX.utils.book_append_sheet(workbook, worksheet, "PIB");
+    const filename = isFullHistory
+      ? "pib_5932_min_max.xlsx"
+      : `pib_5932_${start || rangeLabel.min}_${end || rangeLabel.max}.xlsx`;
     XLSX.writeFile(workbook, filename);
   };
 
   return (
     <main style={{ padding: 24, display: "flex", flexDirection: "column", gap: 24 }}>
       <header>
-        <h1 style={{ margin: 0 }}>{title}</h1>
-        {subtitle && (
-          <p style={{ marginTop: 6, color: "#6b7280" }}>
-            {subtitle}
-          </p>
-        )}
+        <h1 style={{ margin: 0 }}>PIB</h1>
+        <p style={{ marginTop: 6, color: "#6b7280" }}>SIDRA 5932</p>
       </header>
 
-      <IpcaToolbar
+      <PibToolbar
         start={start}
         end={end}
-        auto={isDefault12m}
+        auto={isDefault12q}
         metric={selectedMetric}
-        metrics={metrics}
+        metrics={METRICS}
         loading={loading}
         isAdmin={isAdmin}
         availableMin={availableRange.min}
@@ -306,10 +290,11 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
           showDataLabels={showDataLabels}
           onShowDataLabelsChange={setShowDataLabels}
           onRetry={handleRetry}
+          seriesLabel="Série trimestral"
         />
 
         {otherMetrics.length > 0 && (
-          <MiniMetricCharts<MetricKey>
+          <MiniMetricCharts<PibMetricKey>
             rows={rows}
             metrics={otherMetrics}
             activeMetric={selectedMetric}
@@ -318,18 +303,17 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
         )}
       </section>
 
-      <IndicatorTable rows={rows} loading={loading} resetKey={resetKey} metrics={metrics} />
+      <PibTable rows={rows} loading={loading} resetKey={resetKey} metrics={METRICS} />
 
       {!loading && !error && rows.length > 0 && (
         <footer style={{ color: "#6b7280", fontSize: 12 }}>
           Range atual:{" "}
           {isFullHistory
             ? "Histórico completo (min→max)"
-            : isDefault12m
-              ? "Padrão (últimos 12 meses)"
+            : isDefault12q
+              ? "Padrão (últimos 12 trimestres)"
               : `${start} → ${end}`}{" "}
           · Disponível: {availableRange.min} → {availableRange.max}
-          {footerText ? ` · ${footerText}` : ""}
         </footer>
       )}
     </main>

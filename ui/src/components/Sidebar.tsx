@@ -15,6 +15,7 @@ export default function Sidebar() {
   const isIpca15Active = useMemo(() => pathname === "/ibge/ipca15", [pathname]);
   const isInpcActive = useMemo(() => pathname === "/ibge/inpc", [pathname]);
   const isIppActive = useMemo(() => pathname === "/ibge/ipp", [pathname]);
+  const isPibActive = useMemo(() => pathname === "/ibge/pib", [pathname]);
 
   const sidebarWidth = collapsed ? 64 : 260;
   const adminHref = isAdmin ? "/admin/db" : "/admin/login";
@@ -139,6 +140,20 @@ export default function Sidebar() {
               }}
             >
               {collapsed ? "IPP" : "IPP"}
+            </Link>
+            <Link
+              href="/ibge/pib"
+              style={{
+                display: "block",
+                borderRadius: 8,
+                padding: "10px 10px",
+                textDecoration: "none",
+                border: "1px solid #eee",
+                background: isPibActive ? "#f3f3f3" : "#fff",
+                fontWeight: isPibActive ? 700 : 500,
+              }}
+            >
+              {collapsed ? "PIB" : "PIB"}
             </Link>
           </div>
         )}
