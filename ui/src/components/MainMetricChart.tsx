@@ -2,7 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { formatPercentBR } from "../lib/format";
-import type { IndicatorRowBase, MetricKey } from "../lib/indicatorTypes";
+type MetricValue = number | string | null | undefined;
+
+type MetricRow = {
+  data: string;
+} & Record<string, MetricValue>;
 
 const formatPercentLabel = (value: number | null) => {
   if (value === null) return "-";
@@ -15,14 +19,15 @@ const formatYMShort = (ym: string) => {
 };
 
 type MainMetricChartProps = {
-  rows: IndicatorRowBase[];
-  metric: MetricKey;
+  rows: MetricRow[];
+  metric: string;
   metricLabel: string;
   loading: boolean;
   error: string | null;
   showDataLabels?: boolean;
   onShowDataLabelsChange?: (value: boolean) => void;
   onRetry: () => void;
+  seriesLabel?: string;
 };
 
 export default function MainMetricChart({
@@ -34,6 +39,7 @@ export default function MainMetricChart({
   showDataLabels,
   onShowDataLabelsChange,
   onRetry,
+  seriesLabel = "Série mensal",
 }: MainMetricChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
@@ -48,12 +54,20 @@ export default function MainMetricChart({
   const series = useMemo(
     () =>
       rows
-        .map((row, index) => ({
-          index,
-          data: row.data,
-          value: row[metric],
-        }))
-        .filter((point) => point.value !== null),
+        .map((row, index) => {
+          const value = row[metric];
+          return {
+            index,
+            data: row.data,
+            value: typeof value === "number" ? value : null,
+          };
+        })
+        .filter((point) => point.value !== null)
+        .map((point) => ({
+          index: point.index,
+          data: point.data,
+          value: point.value as number,
+        })),
     [rows, metric]
   );
 
@@ -198,7 +212,7 @@ export default function MainMetricChart({
         <div>
           <h2 style={{ margin: 0, fontSize: 18 }}>{metricLabel}</h2>
           <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: 13 }}>
-            Série mensal — {rows.length} registros
+            {seriesLabel} — {rows.length} registros
           </p>
         </div>
         {onShowDataLabelsChange && (

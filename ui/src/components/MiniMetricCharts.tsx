@@ -2,11 +2,23 @@
 
 import { useMemo } from "react";
 import { formatPercentBR } from "../lib/format";
-import type { IndicatorRowBase, MetricKey } from "../lib/indicatorTypes";
-import { MetricOption } from "./IpcaToolbar";
+type MetricValue = number | string | null | undefined;
 
-const sparklinePoints = (rows: IndicatorRowBase[], metric: MetricKey) => {
-  const values = rows.map((row) => row[metric]).filter((value) => value !== null) as number[];
+type MetricRow = {
+  data: string;
+} & Record<string, MetricValue>;
+
+type MetricOption<K extends string = string> = {
+  key: K;
+  label: string;
+};
+
+const toNumber = (value: MetricValue) => (typeof value === "number" ? value : null);
+
+const sparklinePoints = (rows: MetricRow[], metric: string) => {
+  const values = rows
+    .map((row) => toNumber(row[metric]))
+    .filter((value): value is number => value !== null);
   if (values.length === 0) return "";
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -20,19 +32,19 @@ const sparklinePoints = (rows: IndicatorRowBase[], metric: MetricKey) => {
     .join(" ");
 };
 
-type MiniMetricChartsProps = {
-  rows: IndicatorRowBase[];
-  metrics: MetricOption[];
-  activeMetric: MetricKey;
-  onSelect: (metric: MetricKey) => void;
+type MiniMetricChartsProps<K extends string = string> = {
+  rows: MetricRow[];
+  metrics: MetricOption<K>[];
+  activeMetric: K;
+  onSelect: (metric: K) => void;
 };
 
-export default function MiniMetricCharts({
+export default function MiniMetricCharts<K extends string = string>({
   rows,
   metrics,
   activeMetric,
   onSelect,
-}: MiniMetricChartsProps) {
+}: MiniMetricChartsProps<K>) {
   const points = useMemo(
     () =>
       metrics.reduce<Record<string, string>>((acc, metric) => {
@@ -46,7 +58,7 @@ export default function MiniMetricCharts({
     () =>
       metrics.reduce<Record<string, number | null>>((acc, metric) => {
         for (let i = rows.length - 1; i >= 0; i -= 1) {
-          const value = rows[i]?.[metric.key] ?? null;
+          const value = toNumber(rows[i]?.[metric.key]);
           if (value !== null) {
             acc[metric.key] = value;
             return acc;

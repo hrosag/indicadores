@@ -13,6 +13,7 @@ export default function AdminDbPage() {
   const [ipca15Open, setIpca15Open] = useState(true);
   const [inpcOpen, setInpcOpen] = useState(true);
   const [ippOpen, setIppOpen] = useState(true);
+  const [pibOpen, setPibOpen] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
   const [loadingInitialIpca, setLoadingInitialIpca] = useState(false);
   const [loadingCurrentIpca, setLoadingCurrentIpca] = useState(false);
@@ -22,6 +23,8 @@ export default function AdminDbPage() {
   const [loadingCurrentInpc, setLoadingCurrentInpc] = useState(false);
   const [loadingInitialIpp, setLoadingInitialIpp] = useState(false);
   const [loadingCurrentIpp, setLoadingCurrentIpp] = useState(false);
+  const [loadingInitialPib, setLoadingInitialPib] = useState(false);
+  const [loadingCurrentPib, setLoadingCurrentPib] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -358,6 +361,68 @@ export default function AdminDbPage() {
                   }}
                 >
                   {loadingCurrentIpp ? "Rodando..." : "Atualizar mês atual"}
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => setPibOpen((v) => !v)}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #eee",
+                background: "#fff",
+                textAlign: "left",
+                fontWeight: 700,
+              }}
+            >
+              PIB {pibOpen ? "▾" : "▸"}
+            </button>
+
+            {pibOpen && (
+              <div style={{ paddingLeft: 12, display: "grid", gap: 10 }}>
+                <button
+                  onClick={() =>
+                    runIngest(
+                      "initial",
+                      "ibge_pib_5932",
+                      setLoadingInitialPib,
+                    )
+                  }
+                  disabled={loadingInitialPib}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #222",
+                    background: loadingInitialPib ? "#444" : "#222",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {loadingInitialPib ? "Rodando..." : "Carga inicial (histórico)"}
+                </button>
+
+                <button
+                  onClick={() =>
+                    runIngest(
+                      "current",
+                      "ibge_pib_5932",
+                      setLoadingCurrentPib,
+                    )
+                  }
+                  disabled={loadingCurrentPib}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #222",
+                    background: loadingCurrentPib ? "#444" : "#222",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {loadingCurrentPib ? "Rodando..." : "Atualizar trimestre atual"}
                 </button>
               </div>
             )}
