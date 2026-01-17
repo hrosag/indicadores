@@ -9,6 +9,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [ibgeOpen, setIbgeOpen] = useState(true);
+  const [simulatorOpen, setSimulatorOpen] = useState(true);
   const { isAdmin } = useIsAdmin();
 
   const isIpcaActive = useMemo(() => pathname === "/ibge/ipca", [pathname]);
@@ -16,6 +17,10 @@ export default function Sidebar() {
   const isInpcActive = useMemo(() => pathname === "/ibge/inpc", [pathname]);
   const isIppActive = useMemo(() => pathname === "/ibge/ipp", [pathname]);
   const isPibActive = useMemo(() => pathname === "/ibge/pib", [pathname]);
+  const isFinancingActive = useMemo(
+    () => pathname?.startsWith("/simulador/financiamento") ?? false,
+    [pathname],
+  );
 
   const sidebarWidth = collapsed ? 64 : 260;
   const adminHref = isAdmin ? "/admin/db" : "/admin/login";
@@ -160,21 +165,60 @@ export default function Sidebar() {
       </div>
 
       {isAdmin && (
-        <Link
-          href="/admin/db"
-          style={{
-            display: "block",
-            borderRadius: 8,
-            padding: "10px 10px",
-            textDecoration: "none",
-            border: "1px solid #eee",
-            background: pathname?.startsWith("/admin/db") ? "#f3f3f3" : "#fff",
-            fontWeight: pathname?.startsWith("/admin/db") ? 700 : 600,
-            textAlign: "left",
-          }}
-        >
-          {collapsed ? "BD" : "Banco de Dados"}
-        </Link>
+        <>
+          <div>
+            <button
+              onClick={() => setSimulatorOpen((v) => !v)}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                border: "1px solid #ddd",
+                background: "#fff",
+                borderRadius: 8,
+                padding: "10px 10px",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              {collapsed ? "SM" : "Simulador"} {collapsed ? "" : simulatorOpen ? "▾" : "▸"}
+            </button>
+
+            {simulatorOpen && (
+              <div style={{ marginTop: 8, paddingLeft: collapsed ? 0 : 12 }}>
+                <Link
+                  href="/simulador/financiamento"
+                  style={{
+                    display: "block",
+                    borderRadius: 8,
+                    padding: "10px 10px",
+                    textDecoration: "none",
+                    border: "1px solid #eee",
+                    background: isFinancingActive ? "#f3f3f3" : "#fff",
+                    fontWeight: isFinancingActive ? 700 : 500,
+                  }}
+                >
+                  {collapsed ? "FIN" : "Financiamento"}
+                </Link>
+              </div>
+            )}
+          </div>
+
+          <Link
+            href="/admin/db"
+            style={{
+              display: "block",
+              borderRadius: 8,
+              padding: "10px 10px",
+              textDecoration: "none",
+              border: "1px solid #eee",
+              background: pathname?.startsWith("/admin/db") ? "#f3f3f3" : "#fff",
+              fontWeight: pathname?.startsWith("/admin/db") ? 700 : 600,
+              textAlign: "left",
+            }}
+          >
+            {collapsed ? "BD" : "Banco de Dados"}
+          </Link>
+        </>
       )}
 
       <div style={{ flex: 1 }} />
