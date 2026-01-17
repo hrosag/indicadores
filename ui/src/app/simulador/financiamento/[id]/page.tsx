@@ -9,6 +9,7 @@ import {
   CostItemInput,
   FinanceSimulationInputs,
   defaultFinanceSimulationInputs,
+  fixedCostItemDefinitions,
   hydrateFinanceInputs,
   normalizeFinanceInputs,
 } from "../../../../lib/financeSimulation";
@@ -41,13 +42,6 @@ const sectionStyle: CSSProperties = {
   display: "grid",
   gap: 12,
 };
-
-const buildEmptyCostItem = (): CostItemInput => ({
-  code: "",
-  label: "",
-  amount: "",
-  is_financed: false,
-});
 
 const formatNumberInput = (value: number | "") => (value === "" ? "" : String(value));
 
@@ -106,6 +100,17 @@ export default function FinancingSimulationDetailPage({
     };
   }, [isAdmin, loading, simulationId]);
 
+  useEffect(() => {
+    const construction =
+      inputs.construction_months === "" ? null : Number(inputs.construction_months);
+    const grace = inputs.grace_months === "" ? null : Number(inputs.grace_months);
+    const nextTerm = construction === null || grace === null ? "" : construction + grace;
+
+    if (inputs.term_months !== nextTerm) {
+      setInputs((prev) => ({ ...prev, term_months: nextTerm }));
+    }
+  }, [inputs.construction_months, inputs.grace_months, inputs.term_months]);
+
   const updateInput = <K extends keyof FinanceSimulationInputs>(
     key: K,
     value: FinanceSimulationInputs[K],
@@ -113,25 +118,12 @@ export default function FinancingSimulationDetailPage({
     setInputs((prev) => ({ ...prev, [key]: value }));
   };
 
-  const updateCostItem = (index: number, next: CostItemInput) => {
-    setInputs((prev) => {
-      const updated = [...prev.cost_items];
-      updated[index] = next;
-      return { ...prev, cost_items: updated };
-    });
-  };
-
-  const addCostItem = () => {
+  const updateCostItem = (code: string, updates: Partial<CostItemInput>) => {
     setInputs((prev) => ({
       ...prev,
-      cost_items: [...prev.cost_items, buildEmptyCostItem()],
-    }));
-  };
-
-  const removeCostItem = (index: number) => {
-    setInputs((prev) => ({
-      ...prev,
-      cost_items: prev.cost_items.filter((_, itemIndex) => itemIndex !== index),
+      cost_items: prev.cost_items.map((item) =>
+        item.code === code ? { ...item, ...updates } : item,
+      ),
     }));
   };
 
@@ -221,10 +213,10 @@ export default function FinancingSimulationDetailPage({
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Valores principais</h2>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+        <h2 style={{ margin: 0 }}>Projeto</h2>
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
           <div>
-            <div style={labelStyle}>Budget total</div>
+            <div style={labelStyle}>Orçamento total (R$)</div>
             <input
               type="number"
               value={formatNumberInput(inputs.budget_total)}
@@ -235,7 +227,7 @@ export default function FinancingSimulationDetailPage({
             />
           </div>
           <div>
-            <div style={labelStyle}>Valor a incorrer</div>
+            <div style={labelStyle}>Valor a incorrer (R$)</div>
             <input
               type="number"
               value={formatNumberInput(inputs.value_to_incur)}
@@ -249,7 +241,7 @@ export default function FinancingSimulationDetailPage({
             />
           </div>
           <div>
-            <div style={labelStyle}>Valor financiado</div>
+            <div style={labelStyle}>Valor financiado (R$)</div>
             <input
               type="number"
               value={formatNumberInput(inputs.financed_value)}
@@ -266,10 +258,10 @@ export default function FinancingSimulationDetailPage({
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Prazos</h2>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+        <h2 style={{ margin: 0 }}>Prazo</h2>
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
           <div>
-            <div style={labelStyle}>Meses de obra</div>
+            <div style={labelStyle}>Prazo de obra (meses)</div>
             <input
               type="number"
               value={formatNumberInput(inputs.construction_months)}
@@ -283,167 +275,142 @@ export default function FinancingSimulationDetailPage({
             />
           </div>
           <div>
+            <div style={labelStyle}>Carência p/ pagamento (meses)</div>
+            <input
+              type="number"
+              value={formatNumberInput(inputs.grace_months)}
+              onChange={(event) =>
+                updateInput("grace_months", event.target.value === "" ? "" : Number(event.target.value))
+              }
+              style={inputStyle}
+            />
+          </div>
+          <div>
             <div style={labelStyle}>Prazo total (meses)</div>
             <input
               type="number"
               value={formatNumberInput(inputs.term_months)}
-              onChange={(event) =>
-                updateInput("term_months", event.target.value === "" ? "" : Number(event.target.value))
-              }
-              style={inputStyle}
+              readOnly
+              style={{ ...inputStyle, background: "#f5f5f5" }}
             />
           </div>
         </div>
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Taxas</h2>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
-          <div>
-            <div style={labelStyle}>Taxa fixa a.m.</div>
-            <input
-              type="number"
-              step="0.0001"
-              value={formatNumberInput(inputs.fixed_rate_am)}
-              onChange={(event) =>
-                updateInput("fixed_rate_am", event.target.value === "" ? "" : Number(event.target.value))
-              }
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <div style={labelStyle}>Indexador</div>
-            <input
-              value={inputs.correction_label}
-              onChange={(event) => updateInput("correction_label", event.target.value)}
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <div style={labelStyle}>Structuring fee (%)</div>
-            <input
-              type="number"
-              step="0.0001"
-              value={formatNumberInput(inputs.structuring_fee_pct)}
-              onChange={(event) =>
-                updateInput(
-                  "structuring_fee_pct",
-                  event.target.value === "" ? "" : Number(event.target.value),
-                )
-              }
-              style={inputStyle}
-            />
-          </div>
-          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input
-              type="checkbox"
-              checked={inputs.structuring_fee_is_unique}
-              onChange={(event) => updateInput("structuring_fee_is_unique", event.target.checked)}
-            />
-            <span>Structuring fee é parcela única</span>
-          </label>
-          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input
-              type="checkbox"
-              checked={inputs.structuring_fee_is_financed}
-              onChange={(event) => updateInput("structuring_fee_is_financed", event.target.checked)}
-            />
-            <span>Structuring fee financiada</span>
-          </label>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Itens de custo</h2>
+        <h2 style={{ margin: 0 }}>Condições</h2>
         <div style={{ display: "grid", gap: 12 }}>
-          {costItems.map((item, index) => (
-            <div
-              key={`${item.code}-${index}`}
-              style={{
-                display: "grid",
-                gap: 10,
-                gridTemplateColumns: "minmax(80px, 120px) minmax(160px, 1fr) minmax(120px, 160px) auto",
-                alignItems: "center",
-              }}
-            >
-              <input
-                value={item.code}
-                onChange={(event) =>
-                  updateCostItem(index, {
-                    ...item,
-                    code: event.target.value,
-                  })
-                }
-                placeholder="Código"
-                style={inputStyle}
-              />
-              <input
-                value={item.label}
-                onChange={(event) =>
-                  updateCostItem(index, {
-                    ...item,
-                    label: event.target.value,
-                  })
-                }
-                placeholder="Descrição"
-                style={inputStyle}
-              />
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+            <div>
+              <div style={labelStyle}>Taxa de juros (a.m.)</div>
               <input
                 type="number"
-                value={formatNumberInput(item.amount)}
+                step="0.0001"
+                value={formatNumberInput(inputs.fixed_rate_am)}
                 onChange={(event) =>
-                  updateCostItem(index, {
-                    ...item,
-                    amount: event.target.value === "" ? "" : Number(event.target.value),
-                  })
+                  updateInput(
+                    "fixed_rate_am",
+                    event.target.value === "" ? "" : Number(event.target.value),
+                  )
                 }
-                placeholder="Valor"
                 style={inputStyle}
               />
-              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={item.is_financed}
-                  onChange={(event) =>
-                    updateCostItem(index, {
-                      ...item,
-                      is_financed: event.target.checked,
-                    })
-                  }
-                />
-                <span>Financiado</span>
-              </label>
-              {costItems.length > 1 && (
-                <button
-                  onClick={() => removeCostItem(index)}
-                  style={{
-                    border: "1px solid #ddd",
-                    background: "#fff",
-                    borderRadius: 8,
-                    padding: "6px 10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Remover
-                </button>
-              )}
             </div>
-          ))}
-        </div>
-        <div>
-          <button
-            onClick={addCostItem}
+            <div>
+              <div style={labelStyle}>Correção monetária</div>
+              <select
+                value={inputs.correction_label}
+                onChange={(event) => updateInput("correction_label", event.target.value)}
+                style={inputStyle}
+              >
+                <option value="IPCA">IPCA</option>
+                <option value="IPCA (embutido)">IPCA (embutido)</option>
+              </select>
+            </div>
+          </div>
+          <div
             style={{
-              border: "1px solid #222",
-              background: "#222",
-              color: "#fff",
-              borderRadius: 8,
-              padding: "8px 12px",
-              cursor: "pointer",
+              display: "grid",
+              gap: 12,
+              gridTemplateColumns: "minmax(180px, 1fr) auto auto",
+              alignItems: "center",
             }}
           >
-            Adicionar item
-          </button>
+            <div>
+              <div style={labelStyle}>Taxa de estruturação (%)</div>
+              <input
+                type="number"
+                step="0.0001"
+                value={formatNumberInput(inputs.structuring_fee_pct)}
+                onChange={(event) =>
+                  updateInput(
+                    "structuring_fee_pct",
+                    event.target.value === "" ? "" : Number(event.target.value),
+                  )
+                }
+                style={inputStyle}
+              />
+            </div>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 22 }}>
+              <input
+                type="checkbox"
+                checked={inputs.structuring_fee_is_unique}
+                onChange={(event) => updateInput("structuring_fee_is_unique", event.target.checked)}
+              />
+              <span>Estruturação única</span>
+            </label>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 22 }}>
+              <input
+                type="checkbox"
+                checked={inputs.structuring_fee_is_financed}
+                onChange={(event) => updateInput("structuring_fee_is_financed", event.target.checked)}
+              />
+              <span>Estruturação financiada</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>Custos adicionais</h2>
+        <div style={{ display: "grid", gap: 10 }}>
+          {fixedCostItemDefinitions.map((definition) => {
+            const item = costItems.find((entry) => entry.code === definition.code);
+            return (
+              <div
+                key={definition.code}
+                style={{
+                  display: "grid",
+                  gap: 10,
+                  gridTemplateColumns: "minmax(180px, 1fr) minmax(140px, 180px) auto",
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{definition.label}</div>
+                <input
+                  type="number"
+                  value={formatNumberInput(item?.amount ?? "")}
+                  onChange={(event) =>
+                    updateCostItem(definition.code, {
+                      amount: event.target.value === "" ? "" : Number(event.target.value),
+                    })
+                  }
+                  placeholder="Valor (R$)"
+                  style={inputStyle}
+                />
+                <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={item?.is_financed ?? false}
+                    onChange={(event) =>
+                      updateCostItem(definition.code, { is_financed: event.target.checked })
+                    }
+                  />
+                  <span>Financiado</span>
+                </label>
+              </div>
+            );
+          })}
         </div>
       </section>
 
