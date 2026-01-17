@@ -20,6 +20,8 @@ class Job:
     name: str
     url: str
     target_table: str
+    period_kind: str = "month"
+    on_conflict: str = "d1c,d2c,d3c"
 
 
 def load_job(path: str) -> Job:
@@ -29,6 +31,8 @@ def load_job(path: str) -> Job:
         name=str(cfg["name"]),
         url=str(cfg["url"]),
         target_table=str(cfg["target_table"]),
+        period_kind=str(cfg.get("period_kind", "month")),
+        on_conflict=str(cfg.get("on_conflict", "d1c,d2c,d3c")),
     )
 
 
@@ -101,8 +105,15 @@ def period_from_url(url: str) -> str:
     return match.group(1)
 
 
-def next_period(period: str) -> str:
+def next_period(period: str, kind: str) -> str:
     year = int(period[:4])
+    if kind == "quarter":
+        quarter = int(period[4:])
+        if quarter < 1 or quarter > 4:
+            raise ValueError(f"Período trimestral inválido: {period}")
+        if quarter == 4:
+            return f"{year + 1}01"
+        return f"{year}{quarter + 1:02d}"
     month = int(period[4:])
     if month < 1 or month > 12:
         raise ValueError(f"Período inválido: {period}")
@@ -111,14 +122,14 @@ def next_period(period: str) -> str:
     return f"{year}{month + 1:02d}"
 
 
-def build_periods(first_period: str, last_period: str) -> list[str]:
+def build_periods(first_period: str, last_period: str, kind: str) -> list[str]:
     periods = []
     current = first_period
     while True:
         periods.append(current)
         if current == last_period:
             break
-        current = next_period(current)
+        current = next_period(current, kind)
         if len(periods) > 2000:
             raise RuntimeError("Intervalo de períodos excedeu limite esperado.")
     return periods
@@ -142,6 +153,13 @@ def to_records(df: pd.DataFrame, source_url: str) -> list[dict[str, Any]]:
     }
 
     out = df.rename(columns=cols)
+    classification_cols = [
+        c for c in df.columns if re.match(r"^C\d+[CN]$", str(c))
+    ]
+    classification_map = {c: str(c).lower() for c in classification_cols}
+    if classification_map:
+        out = out.rename(columns=classification_map)
+        cols.update(classification_map)
     for c in cols.values():
         if c not in out.columns:
             out[c] = None
@@ -165,11 +183,11 @@ def sanitize_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return records
 
 
-def upsert_supabase(table: str, records: list[dict[str, Any]]) -> None:
+def upsert_supabase(table: str, records: list[dict[str, Any]], on_conflict: str) -> None:
     supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
     key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
-    endpoint = f"{supabase_url}/rest/v1/{table}?on_conflict=d1c,d2c,d3c"
+    endpoint = f"{supabase_url}/rest/v1/{table}?on_conflict={on_conflict}"
     headers = {
         "apikey": key,
         "Authorization": f"Bearer {key}",
@@ -220,7 +238,7 @@ def main() -> None:
         records = sanitize_records(records)
         if not records:
             raise RuntimeError("Sem registros retornados pela API SIDRA.")
-        upsert_supabase(job.target_table, records)
+        upsert_supabase(job.target_table, records, job.on_conflict)
         total_records = len(records)
     else:
         try:
@@ -235,7 +253,7 @@ def main() -> None:
                 "Carga inicial requer endpoints /p/first e /p/last disponíveis."
             ) from exc
 
-        periods = build_periods(first_period, last_period)
+        periods = build_periods(first_period, last_period, job.period_kind)
 
         for period in periods:
             target_url = with_period(job.url, period)
@@ -244,7 +262,7 @@ def main() -> None:
             records = sanitize_records(records)
             if not records:
                 raise RuntimeError("Sem registros retornados pela API SIDRA.")
-            upsert_supabase(job.target_table, records)
+            upsert_supabase(job.target_table, records, job.on_conflict)
             total_records += len(records)
             print(f"Período {period}: {len(records)} registros")
 
