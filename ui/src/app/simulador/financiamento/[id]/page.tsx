@@ -12,6 +12,7 @@ import {
   hydrateFinanceInputs,
   normalizeFinanceInputs,
 } from "../../../../lib/financeSimulation";
+import { buildBulletSchedule } from "../../../../lib/financeBulletEngine";
 
 type SimulationRecord = {
   id: string;
@@ -46,6 +47,26 @@ const sectionStyle: CSSProperties = {
 const compactInputStyle: CSSProperties = {
   ...inputStyle,
   maxWidth: 160,
+};
+
+const tableHeaderStyle: CSSProperties = {
+  textAlign: "left",
+  fontSize: 11,
+  fontWeight: 600,
+  color: "#555",
+  padding: "8px 10px",
+  borderBottom: "1px solid #eee",
+  background: "#fafafa",
+  whiteSpace: "nowrap",
+};
+
+const tableCellStyle: CSSProperties = {
+  padding: "8px 10px",
+  borderBottom: "1px solid #f0f0f0",
+  fontSize: 12,
+  color: "#333",
+  textAlign: "right",
+  whiteSpace: "nowrap",
 };
 
 const formatNumberInput = (value: number | "") => (value === "" ? "" : String(value));
@@ -186,6 +207,7 @@ export default function FinancingSimulationDetailPage({
     }
     return construction + grace;
   }, [inputs.construction_months, inputs.grace_months]);
+  const bulletSchedule = useMemo(() => buildBulletSchedule(inputs), [inputs]);
 
   useEffect(() => {
     let active = true;
@@ -1003,6 +1025,106 @@ export default function FinancingSimulationDetailPage({
             />
           </div>
         </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>Resultado da Simulação (BULLET)</h2>
+        {inputs.amortization_type !== "BULLET" ? (
+          <p style={{ margin: 0, color: "#666" }}>
+            Resultado disponível apenas para BULLET no momento.
+          </p>
+        ) : "error" in bulletSchedule ? (
+          <p style={{ margin: 0, color: "#666" }}>{bulletSchedule.error}</p>
+        ) : (
+          <div style={{ display: "grid", gap: 16 }}>
+            <div
+              style={{
+                display: "grid",
+                gap: 12,
+                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              }}
+            >
+              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                <div style={labelStyle}>Saldo base final (principal)</div>
+                <strong>{formatCurrencyValue(bulletSchedule.kpis.saldoBaseFinal)}</strong>
+              </div>
+              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                <div style={labelStyle}>Soma juros</div>
+                <strong>{formatCurrencyValue(bulletSchedule.kpis.totalJuros)}</strong>
+              </div>
+              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                <div style={labelStyle}>Soma seguro</div>
+                <strong>{formatCurrencyValue(bulletSchedule.kpis.totalSeguro)}</strong>
+              </div>
+              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                <div style={labelStyle}>Soma gestão</div>
+                <strong>{formatCurrencyValue(bulletSchedule.kpis.totalGestao)}</strong>
+              </div>
+              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                <div style={labelStyle}>Pagamento total no vencimento</div>
+                <strong>
+                  {formatCurrencyValue(bulletSchedule.kpis.pagamentoTotalVencimento)}
+                </strong>
+              </div>
+              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                <div style={labelStyle}>Total pago no contrato</div>
+                <strong>{formatCurrencyValue(bulletSchedule.kpis.totalPagoContrato)}</strong>
+              </div>
+            </div>
+            <div
+              style={{
+                border: "1px solid #eee",
+                borderRadius: 12,
+                overflowX: "auto",
+              }}
+            >
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1200 }}>
+                <thead>
+                  <tr>
+                    <th style={tableHeaderStyle}>Mês</th>
+                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Tranches</th>
+                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>
+                      Taxa estruturação
+                    </th>
+                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>
+                      Desp. financiada
+                    </th>
+                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Eventos total</th>
+                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Saldo base</th>
+                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Juros</th>
+                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Seguro</th>
+                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Gestão</th>
+                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Parcela</th>
+                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Principal pago</th>
+                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Pagamento total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bulletSchedule.rows.map((row) => (
+                    <tr key={`bullet-row-${row.month}`}>
+                      <td style={{ ...tableCellStyle, textAlign: "left" }}>{row.month}</td>
+                      <td style={tableCellStyle}>{formatCurrencyValue(row.eventsTranche)}</td>
+                      <td style={tableCellStyle}>
+                        {formatCurrencyValue(row.eventsStructuringFee)}
+                      </td>
+                      <td style={tableCellStyle}>
+                        {formatCurrencyValue(row.eventsFinancedExpense)}
+                      </td>
+                      <td style={tableCellStyle}>{formatCurrencyValue(row.eventsTotal)}</td>
+                      <td style={tableCellStyle}>{formatCurrencyValue(row.saldoBase)}</td>
+                      <td style={tableCellStyle}>{formatCurrencyValue(row.juros)}</td>
+                      <td style={tableCellStyle}>{formatCurrencyValue(row.seguro)}</td>
+                      <td style={tableCellStyle}>{formatCurrencyValue(row.gestao)}</td>
+                      <td style={tableCellStyle}>{formatCurrencyValue(row.parcela)}</td>
+                      <td style={tableCellStyle}>{formatCurrencyValue(row.principalPago)}</td>
+                      <td style={tableCellStyle}>{formatCurrencyValue(row.pagamentoTotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </section>
 
       <section style={{ display: "flex", gap: 12, alignItems: "center" }}>
