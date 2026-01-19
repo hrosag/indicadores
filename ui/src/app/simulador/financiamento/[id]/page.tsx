@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, SyntheticEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
@@ -42,6 +42,27 @@ const sectionStyle: CSSProperties = {
   background: "#fff",
   display: "grid",
   gap: 12,
+};
+
+const accordionStyle: CSSProperties = {
+  border: "1px solid #eee",
+  borderRadius: 12,
+  background: "#fff",
+};
+
+const accordionSummaryStyle: CSSProperties = {
+  padding: "12px 14px",
+  fontWeight: 800,
+  display: "flex",
+  justifyContent: "space-between",
+  cursor: "pointer",
+};
+
+const accordionBodyStyle: CSSProperties = {
+  padding: 16,
+  borderTop: "1px solid #f0f0f0",
+  display: "grid",
+  gap: 16,
 };
 
 const compactInputStyle: CSSProperties = {
@@ -363,6 +384,13 @@ export default function FinancingSimulationDetailPage({
 
   const handleBack = () => router.push("/simulador/financiamento");
 
+  const handleResultToggle = (event: SyntheticEvent<HTMLDetailsElement>) => {
+    const target = event.currentTarget;
+    if (target.open) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   if (loading) {
     return <main style={{ padding: 24 }}>Carregando...</main>;
   }
@@ -412,6 +440,7 @@ export default function FinancingSimulationDetailPage({
       )}
 
       <section style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>Simulação analisada</h2>
         <div style={{ display: "grid", gap: 12, maxWidth: 420 }}>
           <div>
             <div style={labelStyle}>Título</div>
@@ -425,707 +454,737 @@ export default function FinancingSimulationDetailPage({
         </div>
       </section>
 
-      <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Tipo de financiamento</h2>
-        <div style={{ display: "grid", gap: 12, maxWidth: 320 }}>
-          <div>
-            <div style={labelStyle}>Tipo de financiamento</div>
-            <select
-              value={inputs.amortization_type}
-              onChange={(event) =>
-                updateInput(
-                  "amortization_type",
-                  event.target.value as FinanceSimulationInputs["amortization_type"],
-                )
-              }
-              style={{ ...inputStyle, maxWidth: 240 }}
-            >
-              <option value="SAC">SAC</option>
-              <option value="PRICE">PRICE</option>
-              <option value="BULLET">BULLET</option>
-            </select>
-          </div>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Valores (R$)</h2>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            fontSize: 12,
-            color: "#444",
-            fontWeight: 500,
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={inputs.financed_is_parceled}
-            onChange={(event) => {
-              const nextChecked = event.target.checked;
-              setInputs((prev) => {
-                if (!nextChecked) {
-                  return { ...prev, financed_is_parceled: false };
-                }
-                const nextCount =
-                  prev.financed_tranches_count === "" ? 1 : prev.financed_tranches_count;
-                const count = toSafeCount(nextCount);
-                let nextTranches = ensureTrancheLength(prev.financed_tranches, count);
-                if (nextTranches.length > 0 && nextTranches[0].month === "") {
-                  nextTranches = [...nextTranches];
-                  nextTranches[0] = {
-                    ...nextTranches[0],
-                    month: 0,
-                    amount:
-                      prev.financed_value === "" ? nextTranches[0].amount : prev.financed_value,
-                  };
-                }
-                return {
-                  ...prev,
-                  financed_is_parceled: true,
-                  financed_tranches_count: nextCount,
-                  financed_tranches: nextTranches,
-                };
-              });
-            }}
-          />
-          Liberação parcelada (tranches)?
-        </label>
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          }}
-        >
-          {!inputs.financed_is_parceled && (
-            <div>
-              <div style={labelStyle}>Valor financiado</div>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={financedValueText}
-                onFocus={() =>
-                  setFinancedValueText(
-                    inputs.financed_value === "" ? "" : String(inputs.financed_value),
-                  )
-                }
-                onChange={(event) => setFinancedValueText(event.target.value)}
-                onBlur={(event) => {
-                  const parsed = parseDecimalText(event.target.value);
-                  updateInput("financed_value", parsed);
-                  setFinancedValueText(parsed === "" ? "" : formatCurrencyValue(parsed));
-                }}
-                style={inputStyle}
-              />
-            </div>
-          )}
-          <div>
-            <div style={labelStyle}>Desp. financiada</div>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={financedExpensesText}
-              onFocus={() =>
-                setFinancedExpensesText(
-                  inputs.financed_expenses_amount === ""
-                    ? ""
-                    : String(inputs.financed_expenses_amount),
-                )
-              }
-              onChange={(event) => setFinancedExpensesText(event.target.value)}
-              onBlur={(event) => {
-                const parsed = parseDecimalText(event.target.value);
-                updateInput("financed_expenses_amount", parsed);
-                setFinancedExpensesText(parsed === "" ? "" : formatCurrencyValue(parsed));
-              }}
-              style={inputStyle}
-            />
-          </div>
-        </div>
-        {inputs.financed_is_parceled && (
-          <div style={{ display: "grid", gap: 12 }}>
-            <div style={{ maxWidth: 220 }}>
-              <div style={labelStyle}>Em quantas tranches?</div>
-              <input
-                type="number"
-                value={formatNumberInput(inputs.financed_tranches_count)}
-                onChange={(event) =>
-                  updateFinancedTrancheCount(
-                    event.target.value === "" ? "" : Number(event.target.value),
-                  )
-                }
-                style={compactInputStyle}
-              />
-            </div>
-            <div style={{ display: "grid", gap: 12 }}>
-              {inputs.financed_tranches.map((value, index) => (
-                <div
-                  key={`financed-tranche-${index}`}
-                  style={{
-                    display: "grid",
-                    gap: 8,
-                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  }}
+      <details style={accordionStyle} open>
+        <summary style={accordionSummaryStyle}>Inputs</summary>
+        <div style={accordionBodyStyle}>
+          <section style={sectionStyle}>
+            <h2 style={{ margin: 0 }}>Tipo de financiamento</h2>
+            <div style={{ display: "grid", gap: 12, maxWidth: 320 }}>
+              <div>
+                <div style={labelStyle}>Tipo de financiamento</div>
+                <select
+                  value={inputs.amortization_type}
+                  onChange={(event) =>
+                    updateInput(
+                      "amortization_type",
+                      event.target.value as FinanceSimulationInputs["amortization_type"],
+                    )
+                  }
+                  style={{ ...inputStyle, maxWidth: 240 }}
                 >
-                  <div>
-                    <div style={labelStyle}>{`Tranche ${index + 1} – Mês (0 = entrada)`}</div>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={formatNumberInput(value.month)}
-                      onChange={(event) => {
-                        const nextValue =
-                          event.target.value === "" ? "" : Number(event.target.value);
-                        setInputs((prev) => {
-                          const nextTranches = [...prev.financed_tranches];
-                          nextTranches[index] = {
-                            ...nextTranches[index],
-                            month: nextValue,
-                          };
-                          return { ...prev, financed_tranches: nextTranches };
-                        });
-                      }}
-                      style={compactInputStyle}
-                    />
-                  </div>
-                  <div>
-                    <div style={labelStyle}>{`Tranche ${index + 1} – Valor (R$)`}</div>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={financedTrancheAmountTexts[index] ?? ""}
-                      onFocus={() =>
-                        setFinancedTrancheAmountTexts((prev) => {
-                          const next = [...prev];
-                          next[index] = value.amount === "" ? "" : String(value.amount);
-                          return next;
-                        })
-                      }
-                      onChange={(event) =>
-                        setFinancedTrancheAmountTexts((prev) => {
-                          const next = [...prev];
-                          next[index] = event.target.value;
-                          return next;
-                        })
-                      }
-                      onBlur={(event) => {
-                        const parsed = parseDecimalText(event.target.value);
-                        setInputs((prev) => {
-                          const nextTranches = [...prev.financed_tranches];
-                          nextTranches[index] = {
-                            ...nextTranches[index],
-                            amount: parsed,
-                          };
-                          return { ...prev, financed_tranches: nextTranches };
-                        });
-                        setFinancedTrancheAmountTexts((prev) => {
-                          const next = [...prev];
-                          next[index] = parsed === "" ? "" : formatCurrencyValue(parsed);
-                          return next;
-                        });
-                      }}
-                      style={inputStyle}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div>
-              <div style={labelStyle}>Total liberado (R$)</div>
-              <input
-                type="text"
-                value={formatCurrencyValue(financedTranchesTotal)}
-                readOnly
-                style={{ ...inputStyle, background: "#f5f5f5" }}
-              />
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Garantias</h2>
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          }}
-        >
-          <div>
-            <div style={labelStyle}>Valor da garantia (R$)</div>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={guaranteeValueText}
-              onFocus={() =>
-                setGuaranteeValueText(
-                  inputs.guarantee_value === "" ? "" : String(inputs.guarantee_value),
-                )
-              }
-              onChange={(event) => setGuaranteeValueText(event.target.value)}
-              onBlur={(event) => {
-                const parsed = parseDecimalText(event.target.value);
-                updateInput("guarantee_value", parsed);
-                setGuaranteeValueText(parsed === "" ? "" : formatCurrencyValue(parsed));
-              }}
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <div style={labelStyle}>% de garantia</div>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={guaranteePctText}
-              onFocus={() => setGuaranteePctText(formatPercentValue(inputs.guarantee_pct))}
-              onChange={(event) => setGuaranteePctText(event.target.value)}
-              onBlur={(event) => {
-                const parsed = parseDecimalText(event.target.value);
-                updateInput("guarantee_pct", parsed);
-                setGuaranteePctText(parsed === "" ? "" : formatPercentValue(parsed));
-              }}
-              style={{ ...inputStyle, maxWidth: 160 }}
-            />
-          </div>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Taxa de estruturação</h2>
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ maxWidth: 220 }}>
-            <div style={labelStyle}>Em quantas parcelas?</div>
-            <input
-              type="number"
-              value={formatNumberInput(inputs.structuring_fee_installments_count)}
-              onChange={(event) =>
-                updateStructuringFeeCount(event.target.value === "" ? "" : Number(event.target.value))
-              }
-              style={compactInputStyle}
-            />
-          </div>
-          <div style={{ display: "grid", gap: 12 }}>
-            {inputs.structuring_fee_installments.map((value, index) => (
-              <div
-                key={`structuring-fee-${index}`}
-                style={{
-                  display: "grid",
-                  gap: 8,
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                }}
-              >
-                <div>
-                  <div style={labelStyle}>{`Parcela ${index + 1} – Mês (0 = entrada)`}</div>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    value={formatNumberInput(value.month)}
-                    onChange={(event) => {
-                      const nextValue = event.target.value === "" ? "" : Number(event.target.value);
-                      setInputs((prev) => {
-                        const nextInstallments = [...prev.structuring_fee_installments];
-                        nextInstallments[index] = {
-                          ...nextInstallments[index],
-                          month: nextValue,
-                        };
-                        return { ...prev, structuring_fee_installments: nextInstallments };
-                      });
-                    }}
-                    style={compactInputStyle}
-                  />
-                </div>
-                <div>
-                  <div style={labelStyle}>{`Parcela ${index + 1} – Valor (R$)`}</div>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={structuringFeeAmountTexts[index] ?? ""}
-                    onFocus={() =>
-                      setStructuringFeeAmountTexts((prev) => {
-                        const next = [...prev];
-                        next[index] = value.amount === "" ? "" : String(value.amount);
-                        return next;
-                      })
-                    }
-                    onChange={(event) =>
-                      setStructuringFeeAmountTexts((prev) => {
-                        const next = [...prev];
-                        next[index] = event.target.value;
-                        return next;
-                      })
-                    }
-                    onBlur={(event) => {
-                      const parsed = parseDecimalText(event.target.value);
-                      setInputs((prev) => {
-                        const nextInstallments = [...prev.structuring_fee_installments];
-                        nextInstallments[index] = {
-                          ...nextInstallments[index],
-                          amount: parsed,
-                        };
-                        return { ...prev, structuring_fee_installments: nextInstallments };
-                      });
-                      setStructuringFeeAmountTexts((prev) => {
-                        const next = [...prev];
-                        next[index] = parsed === "" ? "" : formatCurrencyValue(parsed);
-                        return next;
-                      });
-                    }}
-                    style={inputStyle}
-                  />
-                </div>
+                  <option value="SAC">SAC</option>
+                  <option value="PRICE">PRICE</option>
+                  <option value="BULLET">BULLET</option>
+                </select>
               </div>
-            ))}
-          </div>
-          <div>
-            <div style={labelStyle}>Total taxa de estruturação (R$)</div>
-            <input
-              type="text"
-              value={formatCurrencyValue(structuringFeeTotal)}
-              readOnly
-              style={{ ...inputStyle, background: "#f5f5f5" }}
-            />
-          </div>
-        </div>
-      </section>
+            </div>
+          </section>
 
-      <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Valor total concedido</h2>
-        <div style={{ maxWidth: 240 }}>
-          <div style={labelStyle}>Total concedido (R$)</div>
-          <input
-            type="text"
-            value={formatCurrencyValue(totalGranted)}
-            readOnly
-            style={{ ...inputStyle, background: "#f5f5f5" }}
-          />
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Prazos (meses)</h2>
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          }}
-        >
-          <div>
-            <div style={labelStyle}>Prazo de obra</div>
-            <input
-              type="number"
-              value={formatNumberInput(inputs.construction_months)}
-              onChange={(event) =>
-                updateInput(
-                  "construction_months",
-                  event.target.value === "" ? "" : Number(event.target.value),
-                )
-              }
-              style={compactInputStyle}
-            />
-          </div>
-          <div>
-            <div style={labelStyle}>Tempo de carência</div>
-            <input
-              type="number"
-              value={formatNumberInput(inputs.grace_months)}
-              onChange={(event) =>
-                updateInput("grace_months", event.target.value === "" ? "" : Number(event.target.value))
-              }
-              style={compactInputStyle}
-            />
-          </div>
-          <div>
-            <div style={labelStyle}>Prazo total p/ pgto</div>
-            <input
-              type="number"
-              value={formatNumberInput(termMonths)}
-              readOnly
-              style={{ ...compactInputStyle, background: "#f5f5f5" }}
-            />
-          </div>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Taxas</h2>
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          }}
-        >
-          <div>
-            <div style={labelStyle}>Taxa simulada (a.m.)</div>
-            <input
-              type="number"
-              step="0.0001"
-              value={formatNumberInput(inputs.fixed_rate_am)}
-              onChange={(event) =>
-                updateInput(
-                  "fixed_rate_am",
-                  event.target.value === "" ? "" : Number(event.target.value),
-                )
-              }
-              style={{ ...inputStyle, maxWidth: 200 }}
-            />
-          </div>
-          <div>
-            <div style={labelStyle}>Seguro (%)</div>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={insuranceText}
-              onFocus={() => setInsuranceText(formatPercentValue(inputs.insurance_pct))}
-              onChange={(event) => setInsuranceText(event.target.value)}
-              onBlur={(event) => {
-                const parsed = parseDecimalText(event.target.value);
-                updateInput("insurance_pct", parsed);
-                setInsuranceText(parsed === "" ? "" : formatPercentValue(parsed));
+          <section style={sectionStyle}>
+            <h2 style={{ margin: 0 }}>Valores (R$)</h2>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+                color: "#444",
+                fontWeight: 500,
               }}
-              style={{ ...inputStyle, maxWidth: 200 }}
-            />
-          </div>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Taxa de gestão (mensal)</h2>
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ maxWidth: 260 }}>
-            <div style={labelStyle}>Incide por quantos meses?</div>
-            <input
-              type="number"
-              value={formatNumberInput(inputs.management_fee_months)}
-              onChange={(event) =>
-                updateManagementFeeMonths(event.target.value === "" ? "" : Number(event.target.value))
-              }
-              style={compactInputStyle}
-            />
-          </div>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 12,
-              color: "#444",
-              fontWeight: 500,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={inputs.management_fee_is_fixed}
-              onChange={(event) => {
-                const nextChecked = event.target.checked;
-                setInputs((prev) => {
-                  const count = toSafeCount(prev.management_fee_months);
-                  return {
-                    ...prev,
-                    management_fee_is_fixed: nextChecked,
-                    management_fee_values: nextChecked
-                      ? Array.from({ length: count }, () =>
-                          prev.management_fee_fixed_amount === ""
-                            ? ""
-                            : prev.management_fee_fixed_amount,
-                        )
-                      : prev.management_fee_values,
-                  };
-                });
-              }}
-            />
-            A taxa de gestão é fixa?
-          </label>
-          {inputs.management_fee_is_fixed ? (
-            <div style={{ maxWidth: 240 }}>
-              <div style={labelStyle}>Valor mensal (R$)</div>
+            >
               <input
-                type="text"
-                inputMode="decimal"
-                value={managementFeeFixedText}
-                onFocus={() =>
-                  setManagementFeeFixedText(
-                    inputs.management_fee_fixed_amount === ""
-                      ? ""
-                      : String(inputs.management_fee_fixed_amount),
-                  )
-                }
-                onChange={(event) => setManagementFeeFixedText(event.target.value)}
-                onBlur={(event) => {
-                  const parsed = parseDecimalText(event.target.value);
+                type="checkbox"
+                checked={inputs.financed_is_parceled}
+                onChange={(event) => {
+                  const nextChecked = event.target.checked;
                   setInputs((prev) => {
-                    const count = toSafeCount(prev.management_fee_months);
+                    if (!nextChecked) {
+                      return { ...prev, financed_is_parceled: false };
+                    }
+                    const nextCount =
+                      prev.financed_tranches_count === "" ? 1 : prev.financed_tranches_count;
+                    const count = toSafeCount(nextCount);
+                    let nextTranches = ensureTrancheLength(prev.financed_tranches, count);
+                    if (nextTranches.length > 0 && nextTranches[0].month === "") {
+                      nextTranches = [...nextTranches];
+                      nextTranches[0] = {
+                        ...nextTranches[0],
+                        month: 0,
+                        amount:
+                          prev.financed_value === "" ? nextTranches[0].amount : prev.financed_value,
+                      };
+                    }
                     return {
                       ...prev,
-                      management_fee_fixed_amount: parsed,
-                      management_fee_values: Array.from({ length: count }, () =>
-                        parsed === "" ? "" : parsed,
-                      ),
+                      financed_is_parceled: true,
+                      financed_tranches_count: nextCount,
+                      financed_tranches: nextTranches,
                     };
                   });
-                  setManagementFeeFixedText(parsed === "" ? "" : formatCurrencyValue(parsed));
                 }}
-                style={inputStyle}
               />
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 12 }}>
-              {inputs.management_fee_values.map((value, index) => (
-                <div key={`management-fee-${index}`}>
-                  <div style={labelStyle}>{`Mês ${index + 1} – Taxa de gestão (R$)`}</div>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={managementFeeValueTexts[index] ?? ""}
-                    onFocus={() =>
-                      setManagementFeeValueTexts((prev) => {
-                        const next = [...prev];
-                        next[index] = value === "" ? "" : String(value);
-                        return next;
-                      })
-                    }
-                    onChange={(event) =>
-                      setManagementFeeValueTexts((prev) => {
-                        const next = [...prev];
-                        next[index] = event.target.value;
-                        return next;
-                      })
-                    }
-                    onBlur={(event) => {
-                      const parsed = parseDecimalText(event.target.value);
-                      setInputs((prev) => {
-                        const nextValues = [...prev.management_fee_values];
-                        nextValues[index] = parsed;
-                        return { ...prev, management_fee_values: nextValues };
-                      });
-                      setManagementFeeValueTexts((prev) => {
-                        const next = [...prev];
-                        next[index] = parsed === "" ? "" : formatCurrencyValue(parsed);
-                        return next;
-                      });
-                    }}
-                    style={inputStyle}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-          <div>
-            <div style={labelStyle}>Total taxa de gestão (R$)</div>
-            <input
-              type="text"
-              value={formatCurrencyValue(managementFeeTotal)}
-              readOnly
-              style={{ ...inputStyle, background: "#f5f5f5" }}
-            />
-          </div>
-        </div>
-      </section>
-
-      <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Resultado da Simulação (BULLET)</h2>
-        {inputs.amortization_type !== "BULLET" ? (
-          <p style={{ margin: 0, color: "#666" }}>
-            Resultado disponível apenas para BULLET no momento.
-          </p>
-        ) : "error" in bulletSchedule ? (
-          <p style={{ margin: 0, color: "#666" }}>{bulletSchedule.error}</p>
-        ) : (
-          <div style={{ display: "grid", gap: 16 }}>
+              Liberação parcelada (tranches)?
+            </label>
             <div
               style={{
                 display: "grid",
                 gap: 12,
-                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
               }}
             >
-              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
-                <div style={labelStyle}>Saldo base final (principal)</div>
-                <strong>{formatCurrencyValue(bulletSchedule.kpis.saldoBaseFinal)}</strong>
-              </div>
-              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
-                <div style={labelStyle}>Soma juros</div>
-                <strong>{formatCurrencyValue(bulletSchedule.kpis.totalJuros)}</strong>
-              </div>
-              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
-                <div style={labelStyle}>Soma seguro</div>
-                <strong>{formatCurrencyValue(bulletSchedule.kpis.totalSeguro)}</strong>
-              </div>
-              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
-                <div style={labelStyle}>Soma gestão</div>
-                <strong>{formatCurrencyValue(bulletSchedule.kpis.totalGestao)}</strong>
-              </div>
-              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
-                <div style={labelStyle}>Pagamento total no vencimento</div>
-                <strong>
-                  {formatCurrencyValue(bulletSchedule.kpis.pagamentoTotalVencimento)}
-                </strong>
-              </div>
-              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
-                <div style={labelStyle}>Total pago no contrato</div>
-                <strong>{formatCurrencyValue(bulletSchedule.kpis.totalPagoContrato)}</strong>
+              {!inputs.financed_is_parceled && (
+                <div>
+                  <div style={labelStyle}>Valor financiado</div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={financedValueText}
+                    onFocus={() =>
+                      setFinancedValueText(
+                        inputs.financed_value === "" ? "" : String(inputs.financed_value),
+                      )
+                    }
+                    onChange={(event) => setFinancedValueText(event.target.value)}
+                    onBlur={(event) => {
+                      const parsed = parseDecimalText(event.target.value);
+                      updateInput("financed_value", parsed);
+                      setFinancedValueText(parsed === "" ? "" : formatCurrencyValue(parsed));
+                    }}
+                    style={inputStyle}
+                  />
+                </div>
+              )}
+              <div>
+                <div style={labelStyle}>Desp. financiada</div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={financedExpensesText}
+                  onFocus={() =>
+                    setFinancedExpensesText(
+                      inputs.financed_expenses_amount === ""
+                        ? ""
+                        : String(inputs.financed_expenses_amount),
+                    )
+                  }
+                  onChange={(event) => setFinancedExpensesText(event.target.value)}
+                  onBlur={(event) => {
+                    const parsed = parseDecimalText(event.target.value);
+                    updateInput("financed_expenses_amount", parsed);
+                    setFinancedExpensesText(parsed === "" ? "" : formatCurrencyValue(parsed));
+                  }}
+                  style={inputStyle}
+                />
               </div>
             </div>
+            {inputs.financed_is_parceled && (
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ maxWidth: 220 }}>
+                  <div style={labelStyle}>Em quantas tranches?</div>
+                  <input
+                    type="number"
+                    value={formatNumberInput(inputs.financed_tranches_count)}
+                    onChange={(event) =>
+                      updateFinancedTrancheCount(
+                        event.target.value === "" ? "" : Number(event.target.value),
+                      )
+                    }
+                    style={compactInputStyle}
+                  />
+                </div>
+                <div style={{ display: "grid", gap: 12 }}>
+                  {inputs.financed_tranches.map((value, index) => (
+                    <div
+                      key={`financed-tranche-${index}`}
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      }}
+                    >
+                      <div>
+                        <div style={labelStyle}>{`Tranche ${index + 1} – Mês (0 = entrada)`}</div>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={formatNumberInput(value.month)}
+                          onChange={(event) => {
+                            const nextValue =
+                              event.target.value === "" ? "" : Number(event.target.value);
+                            setInputs((prev) => {
+                              const nextTranches = [...prev.financed_tranches];
+                              nextTranches[index] = {
+                                ...nextTranches[index],
+                                month: nextValue,
+                              };
+                              return { ...prev, financed_tranches: nextTranches };
+                            });
+                          }}
+                          style={compactInputStyle}
+                        />
+                      </div>
+                      <div>
+                        <div style={labelStyle}>{`Tranche ${index + 1} – Valor (R$)`}</div>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={financedTrancheAmountTexts[index] ?? ""}
+                          onFocus={() =>
+                            setFinancedTrancheAmountTexts((prev) => {
+                              const next = [...prev];
+                              next[index] = value.amount === "" ? "" : String(value.amount);
+                              return next;
+                            })
+                          }
+                          onChange={(event) =>
+                            setFinancedTrancheAmountTexts((prev) => {
+                              const next = [...prev];
+                              next[index] = event.target.value;
+                              return next;
+                            })
+                          }
+                          onBlur={(event) => {
+                            const parsed = parseDecimalText(event.target.value);
+                            setInputs((prev) => {
+                              const nextTranches = [...prev.financed_tranches];
+                              nextTranches[index] = {
+                                ...nextTranches[index],
+                                amount: parsed,
+                              };
+                              return { ...prev, financed_tranches: nextTranches };
+                            });
+                            setFinancedTrancheAmountTexts((prev) => {
+                              const next = [...prev];
+                              next[index] = parsed === "" ? "" : formatCurrencyValue(parsed);
+                              return next;
+                            });
+                          }}
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div style={labelStyle}>Total liberado (R$)</div>
+                  <input
+                    type="text"
+                    value={formatCurrencyValue(financedTranchesTotal)}
+                    readOnly
+                    style={{ ...inputStyle, background: "#f5f5f5" }}
+                  />
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section style={sectionStyle}>
+            <h2 style={{ margin: 0 }}>Garantias</h2>
             <div
               style={{
-                border: "1px solid #eee",
-                borderRadius: 12,
-                overflowX: "auto",
+                display: "grid",
+                gap: 12,
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
               }}
             >
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1200 }}>
-                <thead>
-                  <tr>
-                    <th style={tableHeaderStyle}>Mês</th>
-                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Tranches</th>
-                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>
-                      Taxa estruturação
-                    </th>
-                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>
-                      Desp. financiada
-                    </th>
-                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Eventos total</th>
-                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Saldo base</th>
-                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Juros</th>
-                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Seguro</th>
-                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Gestão</th>
-                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Parcela</th>
-                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Principal pago</th>
-                    <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Pagamento total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bulletSchedule.rows.map((row) => (
-                    <tr key={`bullet-row-${row.month}`}>
-                      <td style={{ ...tableCellStyle, textAlign: "left" }}>{row.month}</td>
-                      <td style={tableCellStyle}>{formatCurrencyValue(row.eventsTranche)}</td>
-                      <td style={tableCellStyle}>
-                        {formatCurrencyValue(row.eventsStructuringFee)}
-                      </td>
-                      <td style={tableCellStyle}>
-                        {formatCurrencyValue(row.eventsFinancedExpense)}
-                      </td>
-                      <td style={tableCellStyle}>{formatCurrencyValue(row.eventsTotal)}</td>
-                      <td style={tableCellStyle}>{formatCurrencyValue(row.saldoBase)}</td>
-                      <td style={tableCellStyle}>{formatCurrencyValue(row.juros)}</td>
-                      <td style={tableCellStyle}>{formatCurrencyValue(row.seguro)}</td>
-                      <td style={tableCellStyle}>{formatCurrencyValue(row.gestao)}</td>
-                      <td style={tableCellStyle}>{formatCurrencyValue(row.parcela)}</td>
-                      <td style={tableCellStyle}>{formatCurrencyValue(row.principalPago)}</td>
-                      <td style={tableCellStyle}>{formatCurrencyValue(row.pagamentoTotal)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div>
+                <div style={labelStyle}>Valor da garantia (R$)</div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={guaranteeValueText}
+                  onFocus={() =>
+                    setGuaranteeValueText(
+                      inputs.guarantee_value === "" ? "" : String(inputs.guarantee_value),
+                    )
+                  }
+                  onChange={(event) => setGuaranteeValueText(event.target.value)}
+                  onBlur={(event) => {
+                    const parsed = parseDecimalText(event.target.value);
+                    updateInput("guarantee_value", parsed);
+                    setGuaranteeValueText(parsed === "" ? "" : formatCurrencyValue(parsed));
+                  }}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <div style={labelStyle}>% de garantia</div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={guaranteePctText}
+                  onFocus={() => setGuaranteePctText(formatPercentValue(inputs.guarantee_pct))}
+                  onChange={(event) => setGuaranteePctText(event.target.value)}
+                  onBlur={(event) => {
+                    const parsed = parseDecimalText(event.target.value);
+                    updateInput("guarantee_pct", parsed);
+                    setGuaranteePctText(parsed === "" ? "" : formatPercentValue(parsed));
+                  }}
+                  style={{ ...inputStyle, maxWidth: 160 }}
+                />
+              </div>
             </div>
-          </div>
-        )}
-      </section>
+          </section>
+
+          <section style={sectionStyle}>
+            <h2 style={{ margin: 0 }}>Taxa de estruturação</h2>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ maxWidth: 220 }}>
+                <div style={labelStyle}>Em quantas parcelas?</div>
+                <input
+                  type="number"
+                  value={formatNumberInput(inputs.structuring_fee_installments_count)}
+                  onChange={(event) =>
+                    updateStructuringFeeCount(
+                      event.target.value === "" ? "" : Number(event.target.value),
+                    )
+                  }
+                  style={compactInputStyle}
+                />
+              </div>
+              <div style={{ display: "grid", gap: 12 }}>
+                {inputs.structuring_fee_installments.map((value, index) => (
+                  <div
+                    key={`structuring-fee-${index}`}
+                    style={{
+                      display: "grid",
+                      gap: 8,
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    }}
+                  >
+                    <div>
+                      <div style={labelStyle}>{`Parcela ${index + 1} – Mês (0 = entrada)`}</div>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={formatNumberInput(value.month)}
+                        onChange={(event) => {
+                          const nextValue =
+                            event.target.value === "" ? "" : Number(event.target.value);
+                          setInputs((prev) => {
+                            const nextInstallments = [...prev.structuring_fee_installments];
+                            nextInstallments[index] = {
+                              ...nextInstallments[index],
+                              month: nextValue,
+                            };
+                            return { ...prev, structuring_fee_installments: nextInstallments };
+                          });
+                        }}
+                        style={compactInputStyle}
+                      />
+                    </div>
+                    <div>
+                      <div style={labelStyle}>{`Parcela ${index + 1} – Valor (R$)`}</div>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={structuringFeeAmountTexts[index] ?? ""}
+                        onFocus={() =>
+                          setStructuringFeeAmountTexts((prev) => {
+                            const next = [...prev];
+                            next[index] = value.amount === "" ? "" : String(value.amount);
+                            return next;
+                          })
+                        }
+                        onChange={(event) =>
+                          setStructuringFeeAmountTexts((prev) => {
+                            const next = [...prev];
+                            next[index] = event.target.value;
+                            return next;
+                          })
+                        }
+                        onBlur={(event) => {
+                          const parsed = parseDecimalText(event.target.value);
+                          setInputs((prev) => {
+                            const nextInstallments = [...prev.structuring_fee_installments];
+                            nextInstallments[index] = {
+                              ...nextInstallments[index],
+                              amount: parsed,
+                            };
+                            return { ...prev, structuring_fee_installments: nextInstallments };
+                          });
+                          setStructuringFeeAmountTexts((prev) => {
+                            const next = [...prev];
+                            next[index] = parsed === "" ? "" : formatCurrencyValue(parsed);
+                            return next;
+                          });
+                        }}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div style={labelStyle}>Total taxa de estruturação (R$)</div>
+                <input
+                  type="text"
+                  value={formatCurrencyValue(structuringFeeTotal)}
+                  readOnly
+                  style={{ ...inputStyle, background: "#f5f5f5" }}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section style={sectionStyle}>
+            <h2 style={{ margin: 0 }}>Valor total concedido</h2>
+            <div style={{ maxWidth: 240 }}>
+              <div style={labelStyle}>Total concedido (R$)</div>
+              <input
+                type="text"
+                value={formatCurrencyValue(totalGranted)}
+                readOnly
+                style={{ ...inputStyle, background: "#f5f5f5" }}
+              />
+            </div>
+          </section>
+
+          <section style={sectionStyle}>
+            <h2 style={{ margin: 0 }}>Prazos (meses)</h2>
+            <div
+              style={{
+                display: "grid",
+                gap: 12,
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              }}
+            >
+              <div>
+                <div style={labelStyle}>Prazo de obra</div>
+                <input
+                  type="number"
+                  value={formatNumberInput(inputs.construction_months)}
+                  onChange={(event) =>
+                    updateInput(
+                      "construction_months",
+                      event.target.value === "" ? "" : Number(event.target.value),
+                    )
+                  }
+                  style={compactInputStyle}
+                />
+              </div>
+              <div>
+                <div style={labelStyle}>Tempo de carência</div>
+                <input
+                  type="number"
+                  value={formatNumberInput(inputs.grace_months)}
+                  onChange={(event) =>
+                    updateInput(
+                      "grace_months",
+                      event.target.value === "" ? "" : Number(event.target.value),
+                    )
+                  }
+                  style={compactInputStyle}
+                />
+              </div>
+              <div>
+                <div style={labelStyle}>Prazo total p/ pgto</div>
+                <input
+                  type="number"
+                  value={formatNumberInput(termMonths)}
+                  readOnly
+                  style={{ ...compactInputStyle, background: "#f5f5f5" }}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section style={sectionStyle}>
+            <h2 style={{ margin: 0 }}>Taxas</h2>
+            <div
+              style={{
+                display: "grid",
+                gap: 12,
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              }}
+            >
+              <div>
+                <div style={labelStyle}>Taxa simulada (a.m.)</div>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={formatNumberInput(inputs.fixed_rate_am)}
+                  onChange={(event) =>
+                    updateInput(
+                      "fixed_rate_am",
+                      event.target.value === "" ? "" : Number(event.target.value),
+                    )
+                  }
+                  style={{ ...inputStyle, maxWidth: 200 }}
+                />
+              </div>
+              <div>
+                <div style={labelStyle}>Seguro (%)</div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={insuranceText}
+                  onFocus={() => setInsuranceText(formatPercentValue(inputs.insurance_pct))}
+                  onChange={(event) => setInsuranceText(event.target.value)}
+                  onBlur={(event) => {
+                    const parsed = parseDecimalText(event.target.value);
+                    updateInput("insurance_pct", parsed);
+                    setInsuranceText(parsed === "" ? "" : formatPercentValue(parsed));
+                  }}
+                  style={{ ...inputStyle, maxWidth: 200 }}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section style={sectionStyle}>
+            <h2 style={{ margin: 0 }}>Taxa de gestão (mensal)</h2>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ maxWidth: 260 }}>
+                <div style={labelStyle}>Incide por quantos meses?</div>
+                <input
+                  type="number"
+                  value={formatNumberInput(inputs.management_fee_months)}
+                  onChange={(event) =>
+                    updateManagementFeeMonths(
+                      event.target.value === "" ? "" : Number(event.target.value),
+                    )
+                  }
+                  style={compactInputStyle}
+                />
+              </div>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 12,
+                  color: "#444",
+                  fontWeight: 500,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={inputs.management_fee_is_fixed}
+                  onChange={(event) => {
+                    const nextChecked = event.target.checked;
+                    setInputs((prev) => {
+                      const count = toSafeCount(prev.management_fee_months);
+                      return {
+                        ...prev,
+                        management_fee_is_fixed: nextChecked,
+                        management_fee_values: nextChecked
+                          ? Array.from({ length: count }, () =>
+                              prev.management_fee_fixed_amount === ""
+                                ? ""
+                                : prev.management_fee_fixed_amount,
+                            )
+                          : prev.management_fee_values,
+                      };
+                    });
+                  }}
+                />
+                A taxa de gestão é fixa?
+              </label>
+              {inputs.management_fee_is_fixed ? (
+                <div style={{ maxWidth: 240 }}>
+                  <div style={labelStyle}>Valor mensal (R$)</div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={managementFeeFixedText}
+                    onFocus={() =>
+                      setManagementFeeFixedText(
+                        inputs.management_fee_fixed_amount === ""
+                          ? ""
+                          : String(inputs.management_fee_fixed_amount),
+                      )
+                    }
+                    onChange={(event) => setManagementFeeFixedText(event.target.value)}
+                    onBlur={(event) => {
+                      const parsed = parseDecimalText(event.target.value);
+                      setInputs((prev) => {
+                        const count = toSafeCount(prev.management_fee_months);
+                        return {
+                          ...prev,
+                          management_fee_fixed_amount: parsed,
+                          management_fee_values: Array.from({ length: count }, () =>
+                            parsed === "" ? "" : parsed,
+                          ),
+                        };
+                      });
+                      setManagementFeeFixedText(parsed === "" ? "" : formatCurrencyValue(parsed));
+                    }}
+                    style={inputStyle}
+                  />
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {inputs.management_fee_values.map((value, index) => (
+                    <div key={`management-fee-${index}`}>
+                      <div style={labelStyle}>{`Mês ${index + 1} – Taxa de gestão (R$)`}</div>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={managementFeeValueTexts[index] ?? ""}
+                        onFocus={() =>
+                          setManagementFeeValueTexts((prev) => {
+                            const next = [...prev];
+                            next[index] = value === "" ? "" : String(value);
+                            return next;
+                          })
+                        }
+                        onChange={(event) =>
+                          setManagementFeeValueTexts((prev) => {
+                            const next = [...prev];
+                            next[index] = event.target.value;
+                            return next;
+                          })
+                        }
+                        onBlur={(event) => {
+                          const parsed = parseDecimalText(event.target.value);
+                          setInputs((prev) => {
+                            const nextValues = [...prev.management_fee_values];
+                            nextValues[index] = parsed;
+                            return { ...prev, management_fee_values: nextValues };
+                          });
+                          setManagementFeeValueTexts((prev) => {
+                            const next = [...prev];
+                            next[index] = parsed === "" ? "" : formatCurrencyValue(parsed);
+                            return next;
+                          });
+                        }}
+                        style={inputStyle}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div>
+                <div style={labelStyle}>Total taxa de gestão (R$)</div>
+                <input
+                  type="text"
+                  value={formatCurrencyValue(managementFeeTotal)}
+                  readOnly
+                  style={{ ...inputStyle, background: "#f5f5f5" }}
+                />
+              </div>
+            </div>
+          </section>
+        </div>
+      </details>
+
+      <details style={accordionStyle} onToggle={handleResultToggle}>
+        <summary style={accordionSummaryStyle}>Resultado</summary>
+        <div style={accordionBodyStyle}>
+          <section style={sectionStyle}>
+            <h2 style={{ margin: 0 }}>Resultado da Simulação (BULLET)</h2>
+            {inputs.amortization_type !== "BULLET" ? (
+              <p style={{ margin: 0, color: "#666" }}>
+                Resultado disponível apenas para BULLET no momento.
+              </p>
+            ) : "error" in bulletSchedule ? (
+              <p style={{ margin: 0, color: "#666" }}>{bulletSchedule.error}</p>
+            ) : (
+              <div style={{ display: "grid", gap: 16 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 12,
+                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  }}
+                >
+                  <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                    <div style={labelStyle}>Saldo base final (principal)</div>
+                    <strong>{formatCurrencyValue(bulletSchedule.kpis.saldoBaseFinal)}</strong>
+                  </div>
+                  <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                    <div style={labelStyle}>Soma juros</div>
+                    <strong>{formatCurrencyValue(bulletSchedule.kpis.totalJuros)}</strong>
+                  </div>
+                  <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                    <div style={labelStyle}>Soma seguro</div>
+                    <strong>{formatCurrencyValue(bulletSchedule.kpis.totalSeguro)}</strong>
+                  </div>
+                  <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                    <div style={labelStyle}>Soma gestão</div>
+                    <strong>{formatCurrencyValue(bulletSchedule.kpis.totalGestao)}</strong>
+                  </div>
+                  <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                    <div style={labelStyle}>Pagamento total no vencimento</div>
+                    <strong>
+                      {formatCurrencyValue(bulletSchedule.kpis.pagamentoTotalVencimento)}
+                    </strong>
+                  </div>
+                  <div style={{ padding: 12, borderRadius: 12, border: "1px solid #eee" }}>
+                    <div style={labelStyle}>Total pago no contrato</div>
+                    <strong>{formatCurrencyValue(bulletSchedule.kpis.totalPagoContrato)}</strong>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    border: "1px solid #eee",
+                    borderRadius: 12,
+                    overflowX: "auto",
+                  }}
+                >
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1200 }}>
+                    <thead>
+                      <tr>
+                        <th style={tableHeaderStyle}>Mês</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Tranches</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: "right" }}>
+                          Taxa estruturação
+                        </th>
+                        <th style={{ ...tableHeaderStyle, textAlign: "right" }}>
+                          Desp. financiada
+                        </th>
+                        <th style={{ ...tableHeaderStyle, textAlign: "right" }}>
+                          Eventos total
+                        </th>
+                        <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Saldo base</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Juros</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Seguro</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Gestão</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: "right" }}>Parcela</th>
+                        <th style={{ ...tableHeaderStyle, textAlign: "right" }}>
+                          Principal pago
+                        </th>
+                        <th style={{ ...tableHeaderStyle, textAlign: "right" }}>
+                          Pagamento total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulletSchedule.rows.map((row) => (
+                        <tr key={`bullet-row-${row.month}`}>
+                          <td style={{ ...tableCellStyle, textAlign: "left" }}>{row.month}</td>
+                          <td style={tableCellStyle}>
+                            {formatCurrencyValue(row.eventsTranche)}
+                          </td>
+                          <td style={tableCellStyle}>
+                            {formatCurrencyValue(row.eventsStructuringFee)}
+                          </td>
+                          <td style={tableCellStyle}>
+                            {formatCurrencyValue(row.eventsFinancedExpense)}
+                          </td>
+                          <td style={tableCellStyle}>{formatCurrencyValue(row.eventsTotal)}</td>
+                          <td style={tableCellStyle}>{formatCurrencyValue(row.saldoBase)}</td>
+                          <td style={tableCellStyle}>{formatCurrencyValue(row.juros)}</td>
+                          <td style={tableCellStyle}>{formatCurrencyValue(row.seguro)}</td>
+                          <td style={tableCellStyle}>{formatCurrencyValue(row.gestao)}</td>
+                          <td style={tableCellStyle}>{formatCurrencyValue(row.parcela)}</td>
+                          <td style={tableCellStyle}>
+                            {formatCurrencyValue(row.principalPago)}
+                          </td>
+                          <td style={tableCellStyle}>
+                            {formatCurrencyValue(row.pagamentoTotal)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      </details>
 
       <section style={{ display: "flex", gap: 12, alignItems: "center" }}>
         <button
