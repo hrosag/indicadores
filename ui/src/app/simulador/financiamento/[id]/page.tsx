@@ -6,10 +6,9 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
 import useIsAdmin from "../../../../lib/useIsAdmin";
 import {
-  CostItemInput,
   FinanceSimulationInputs,
+  FinanceInputValue,
   defaultFinanceSimulationInputs,
-  fixedCostItemDefinitions,
   hydrateFinanceInputs,
   normalizeFinanceInputs,
 } from "../../../../lib/financeSimulation";
@@ -45,6 +44,26 @@ const sectionStyle: CSSProperties = {
 
 const formatNumberInput = (value: number | "") => (value === "" ? "" : String(value));
 
+const sumValues = (values: FinanceInputValue[]) =>
+  values.reduce<number>((total, value) => {
+    const add = value === "" ? 0 : Number(value);
+    return total + (Number.isNaN(add) ? 0 : add);
+  }, 0);
+
+const ensureArrayLength = (values: FinanceInputValue[], count: number) =>
+  Array.from({ length: count }, (_, index) => values[index] ?? "");
+
+const toSafeCount = (value: FinanceInputValue) => {
+  if (value === "") {
+    return 0;
+  }
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) {
+    return 0;
+  }
+  return Math.max(0, Math.trunc(numeric));
+};
+
 export default function FinancingSimulationDetailPage({
   params,
 }: {
@@ -61,7 +80,29 @@ export default function FinancingSimulationDetailPage({
 
   const simulationId = params.id;
 
-  const costItems = useMemo(() => inputs.cost_items, [inputs.cost_items]);
+  const structuringFeeTotal = useMemo(
+    () => sumValues(inputs.structuring_fee_installments),
+    [inputs.structuring_fee_installments],
+  );
+  const managementFeeTotal = useMemo(
+    () => sumValues(inputs.management_fee_values),
+    [inputs.management_fee_values],
+  );
+  const totalGranted = useMemo(() => {
+    const financedValue = inputs.financed_value === "" ? 0 : Number(inputs.financed_value);
+    const financedExpenses =
+      inputs.financed_expenses_amount === "" ? 0 : Number(inputs.financed_expenses_amount);
+    return financedValue + financedExpenses + structuringFeeTotal;
+  }, [inputs.financed_expenses_amount, inputs.financed_value, structuringFeeTotal]);
+  const termMonths = useMemo(() => {
+    const construction =
+      inputs.construction_months === "" ? null : Number(inputs.construction_months);
+    const grace = inputs.grace_months === "" ? null : Number(inputs.grace_months);
+    if (construction === null || grace === null) {
+      return "";
+    }
+    return construction + grace;
+  }, [inputs.construction_months, inputs.grace_months]);
 
   useEffect(() => {
     let active = true;
@@ -100,17 +141,6 @@ export default function FinancingSimulationDetailPage({
     };
   }, [isAdmin, loading, simulationId]);
 
-  useEffect(() => {
-    const construction =
-      inputs.construction_months === "" ? null : Number(inputs.construction_months);
-    const grace = inputs.grace_months === "" ? null : Number(inputs.grace_months);
-    const nextTerm = construction === null || grace === null ? "" : construction + grace;
-
-    if (inputs.term_months !== nextTerm) {
-      setInputs((prev) => ({ ...prev, term_months: nextTerm }));
-    }
-  }, [inputs.construction_months, inputs.grace_months, inputs.term_months]);
-
   const updateInput = <K extends keyof FinanceSimulationInputs>(
     key: K,
     value: FinanceSimulationInputs[K],
@@ -118,12 +148,24 @@ export default function FinancingSimulationDetailPage({
     setInputs((prev) => ({ ...prev, [key]: value }));
   };
 
-  const updateCostItem = (code: string, updates: Partial<CostItemInput>) => {
+  const updateStructuringFeeCount = (value: FinanceInputValue) => {
+    const count = toSafeCount(value);
     setInputs((prev) => ({
       ...prev,
-      cost_items: prev.cost_items.map((item) =>
-        item.code === code ? { ...item, ...updates } : item,
+      structuring_fee_installments_count: value,
+      structuring_fee_installments: ensureArrayLength(
+        prev.structuring_fee_installments,
+        count,
       ),
+    }));
+  };
+
+  const updateManagementFeeMonths = (value: FinanceInputValue) => {
+    const count = toSafeCount(value);
+    setInputs((prev) => ({
+      ...prev,
+      management_fee_months: value,
+      management_fee_values: ensureArrayLength(prev.management_fee_values, count),
     }));
   };
 
@@ -181,7 +223,7 @@ export default function FinancingSimulationDetailPage({
         </button>
         <h1 style={{ margin: 0 }}>Simulador — Financiamento</h1>
         <p style={{ margin: 0, color: "#555" }}>
-          Preencha os campos da simulação comercial (bullet) e salve para seguir.
+          Preencha os campos da simulação de financiamento e salve para seguir.
         </p>
       </header>
 
@@ -213,35 +255,33 @@ export default function FinancingSimulationDetailPage({
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Projeto</h2>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+        <h2 style={{ margin: 0 }}>Tipo de financiamento</h2>
+        <div style={{ display: "grid", gap: 12, maxWidth: 260 }}>
           <div>
-            <div style={labelStyle}>Orçamento total (R$)</div>
-            <input
-              type="number"
-              value={formatNumberInput(inputs.budget_total)}
-              onChange={(event) =>
-                updateInput("budget_total", event.target.value === "" ? "" : Number(event.target.value))
-              }
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <div style={labelStyle}>Valor a incorrer (R$)</div>
-            <input
-              type="number"
-              value={formatNumberInput(inputs.value_to_incur)}
+            <div style={labelStyle}>Tipo de financiamento</div>
+            <select
+              value={inputs.amortization_type}
               onChange={(event) =>
                 updateInput(
-                  "value_to_incur",
-                  event.target.value === "" ? "" : Number(event.target.value),
+                  "amortization_type",
+                  event.target.value as FinanceSimulationInputs["amortization_type"],
                 )
               }
               style={inputStyle}
-            />
+            >
+              <option value="SAC">SAC</option>
+              <option value="PRICE">PRICE</option>
+              <option value="BULLET">BULLET</option>
+            </select>
           </div>
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>Valores (R$)</h2>
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
           <div>
-            <div style={labelStyle}>Valor financiado (R$)</div>
+            <div style={labelStyle}>Valor financiado</div>
             <input
               type="number"
               value={formatNumberInput(inputs.financed_value)}
@@ -254,14 +294,115 @@ export default function FinancingSimulationDetailPage({
               style={inputStyle}
             />
           </div>
+          <div>
+            <div style={labelStyle}>Desp. financiada</div>
+            <input
+              type="number"
+              value={formatNumberInput(inputs.financed_expenses_amount)}
+              onChange={(event) =>
+                updateInput(
+                  "financed_expenses_amount",
+                  event.target.value === "" ? "" : Number(event.target.value),
+                )
+              }
+              style={inputStyle}
+            />
+          </div>
         </div>
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Prazo</h2>
+        <h2 style={{ margin: 0 }}>Garantias</h2>
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+          <div>
+            <div style={labelStyle}>Valor da garantia (R$)</div>
+            <input
+              type="number"
+              value={formatNumberInput(inputs.guarantee_value)}
+              onChange={(event) =>
+                updateInput("guarantee_value", event.target.value === "" ? "" : Number(event.target.value))
+              }
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <div style={labelStyle}>% de garantia</div>
+            <input
+              type="number"
+              value={formatNumberInput(inputs.guarantee_pct)}
+              onChange={(event) =>
+                updateInput("guarantee_pct", event.target.value === "" ? "" : Number(event.target.value))
+              }
+              style={inputStyle}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>Taxa de estruturação</h2>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ maxWidth: 220 }}>
+            <div style={labelStyle}>Em quantas parcelas?</div>
+            <input
+              type="number"
+              value={formatNumberInput(inputs.structuring_fee_installments_count)}
+              onChange={(event) =>
+                updateStructuringFeeCount(event.target.value === "" ? "" : Number(event.target.value))
+              }
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ display: "grid", gap: 12 }}>
+            {inputs.structuring_fee_installments.map((value, index) => (
+              <div key={`structuring-fee-${index}`}>
+                <div style={labelStyle}>{`Parcela ${index + 1} (R$)`}</div>
+                <input
+                  type="number"
+                  value={formatNumberInput(value)}
+                  onChange={(event) => {
+                    const nextValue = event.target.value === "" ? "" : Number(event.target.value);
+                    setInputs((prev) => {
+                      const nextInstallments = [...prev.structuring_fee_installments];
+                      nextInstallments[index] = nextValue;
+                      return { ...prev, structuring_fee_installments: nextInstallments };
+                    });
+                  }}
+                  style={inputStyle}
+                />
+              </div>
+            ))}
+          </div>
+          <div>
+            <div style={labelStyle}>Total taxa de estruturação (R$)</div>
+            <input
+              type="number"
+              value={formatNumberInput(structuringFeeTotal)}
+              readOnly
+              style={{ ...inputStyle, background: "#f5f5f5" }}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>Valor total concedido</h2>
+        <div style={{ maxWidth: 240 }}>
+          <div style={labelStyle}>Total concedido (R$)</div>
+          <input
+            type="number"
+            value={formatNumberInput(totalGranted)}
+            readOnly
+            style={{ ...inputStyle, background: "#f5f5f5" }}
+          />
+        </div>
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>Prazos (meses)</h2>
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
           <div>
-            <div style={labelStyle}>Prazo de obra (meses)</div>
+            <div style={labelStyle}>Prazo de obra</div>
             <input
               type="number"
               value={formatNumberInput(inputs.construction_months)}
@@ -275,7 +416,7 @@ export default function FinancingSimulationDetailPage({
             />
           </div>
           <div>
-            <div style={labelStyle}>Carência p/ pagamento (meses)</div>
+            <div style={labelStyle}>Tempo de carência</div>
             <input
               type="number"
               value={formatNumberInput(inputs.grace_months)}
@@ -286,10 +427,10 @@ export default function FinancingSimulationDetailPage({
             />
           </div>
           <div>
-            <div style={labelStyle}>Prazo total (meses)</div>
+            <div style={labelStyle}>Prazo total p/ pgto</div>
             <input
               type="number"
-              value={formatNumberInput(inputs.term_months)}
+              value={formatNumberInput(termMonths)}
               readOnly
               style={{ ...inputStyle, background: "#f5f5f5" }}
             />
@@ -298,119 +439,84 @@ export default function FinancingSimulationDetailPage({
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Condições</h2>
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-            <div>
-              <div style={labelStyle}>Taxa de juros (a.m.)</div>
-              <input
-                type="number"
-                step="0.0001"
-                value={formatNumberInput(inputs.fixed_rate_am)}
-                onChange={(event) =>
-                  updateInput(
-                    "fixed_rate_am",
-                    event.target.value === "" ? "" : Number(event.target.value),
-                  )
-                }
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <div style={labelStyle}>Correção monetária</div>
-              <select
-                value={inputs.correction_label}
-                onChange={(event) => updateInput("correction_label", event.target.value)}
-                style={inputStyle}
-              >
-                <option value="IPCA">IPCA</option>
-                <option value="IPCA (embutido)">IPCA (embutido)</option>
-              </select>
-            </div>
+        <h2 style={{ margin: 0 }}>Taxas</h2>
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+          <div>
+            <div style={labelStyle}>Taxa simulada (a.m.)</div>
+            <input
+              type="number"
+              step="0.0001"
+              value={formatNumberInput(inputs.fixed_rate_am)}
+              onChange={(event) =>
+                updateInput(
+                  "fixed_rate_am",
+                  event.target.value === "" ? "" : Number(event.target.value),
+                )
+              }
+              style={inputStyle}
+            />
           </div>
-          <div
-            style={{
-              display: "grid",
-              gap: 12,
-              gridTemplateColumns: "minmax(180px, 1fr) auto auto",
-              alignItems: "center",
-            }}
-          >
-            <div>
-              <div style={labelStyle}>Taxa de estruturação (%)</div>
-              <input
-                type="number"
-                step="0.0001"
-                value={formatNumberInput(inputs.structuring_fee_pct)}
-                onChange={(event) =>
-                  updateInput(
-                    "structuring_fee_pct",
-                    event.target.value === "" ? "" : Number(event.target.value),
-                  )
-                }
-                style={inputStyle}
-              />
-            </div>
-            <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 22 }}>
-              <input
-                type="checkbox"
-                checked={inputs.structuring_fee_is_unique}
-                onChange={(event) => updateInput("structuring_fee_is_unique", event.target.checked)}
-              />
-              <span>Estruturação única</span>
-            </label>
-            <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 22 }}>
-              <input
-                type="checkbox"
-                checked={inputs.structuring_fee_is_financed}
-                onChange={(event) => updateInput("structuring_fee_is_financed", event.target.checked)}
-              />
-              <span>Estruturação financiada</span>
-            </label>
+          <div>
+            <div style={labelStyle}>Seguro (%)</div>
+            <input
+              type="number"
+              step="0.0001"
+              value={formatNumberInput(inputs.insurance_pct)}
+              onChange={(event) =>
+                updateInput(
+                  "insurance_pct",
+                  event.target.value === "" ? "" : Number(event.target.value),
+                )
+              }
+              style={inputStyle}
+            />
           </div>
         </div>
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>Custos adicionais</h2>
-        <div style={{ display: "grid", gap: 10 }}>
-          {fixedCostItemDefinitions.map((definition) => {
-            const item = costItems.find((entry) => entry.code === definition.code);
-            return (
-              <div
-                key={definition.code}
-                style={{
-                  display: "grid",
-                  gap: 10,
-                  gridTemplateColumns: "minmax(180px, 1fr) minmax(140px, 180px) auto",
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{definition.label}</div>
+        <h2 style={{ margin: 0 }}>Taxa de gestão (mensal)</h2>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ maxWidth: 220 }}>
+            <div style={labelStyle}>Incide por quantos meses?</div>
+            <input
+              type="number"
+              value={formatNumberInput(inputs.management_fee_months)}
+              onChange={(event) =>
+                updateManagementFeeMonths(event.target.value === "" ? "" : Number(event.target.value))
+              }
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ display: "grid", gap: 12 }}>
+            {inputs.management_fee_values.map((value, index) => (
+              <div key={`management-fee-${index}`}>
+                <div style={labelStyle}>{`Mês ${index + 1} – Taxa de gestão (R$)`}</div>
                 <input
                   type="number"
-                  value={formatNumberInput(item?.amount ?? "")}
-                  onChange={(event) =>
-                    updateCostItem(definition.code, {
-                      amount: event.target.value === "" ? "" : Number(event.target.value),
-                    })
-                  }
-                  placeholder="Valor (R$)"
+                  value={formatNumberInput(value)}
+                  onChange={(event) => {
+                    const nextValue = event.target.value === "" ? "" : Number(event.target.value);
+                    setInputs((prev) => {
+                      const nextValues = [...prev.management_fee_values];
+                      nextValues[index] = nextValue;
+                      return { ...prev, management_fee_values: nextValues };
+                    });
+                  }}
                   style={inputStyle}
                 />
-                <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={item?.is_financed ?? false}
-                    onChange={(event) =>
-                      updateCostItem(definition.code, { is_financed: event.target.checked })
-                    }
-                  />
-                  <span>Financiado</span>
-                </label>
               </div>
-            );
-          })}
+            ))}
+          </div>
+          <div>
+            <div style={labelStyle}>Total taxa de gestão (R$)</div>
+            <input
+              type="number"
+              value={formatNumberInput(managementFeeTotal)}
+              readOnly
+              style={{ ...inputStyle, background: "#f5f5f5" }}
+            />
+          </div>
         </div>
       </section>
 
