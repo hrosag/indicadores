@@ -2,6 +2,9 @@ export type FinanceInputValue = number | "";
 
 export type FinanceAmortizationType = "SAC" | "PRICE" | "BULLET";
 
+type StructuringFeeInstallment = { month: FinanceInputValue; amount: FinanceInputValue };
+const EMPTY_STRUCTURING_INSTALLMENT: StructuringFeeInstallment = { month: "", amount: "" };
+
 export type FinanceSimulationInputs = {
   amortization_type: FinanceAmortizationType;
   financed_value: FinanceInputValue;
@@ -13,7 +16,7 @@ export type FinanceSimulationInputs = {
   fixed_rate_am: FinanceInputValue;
   insurance_pct: FinanceInputValue;
   structuring_fee_installments_count: FinanceInputValue;
-  structuring_fee_installments: { month: FinanceInputValue; amount: FinanceInputValue }[];
+  structuring_fee_installments: StructuringFeeInstallment[];
   management_fee_months: FinanceInputValue;
   management_fee_is_fixed: boolean;
   management_fee_fixed_amount: FinanceInputValue;
@@ -72,10 +75,10 @@ const ensureArrayLength = (values: FinanceInputValue[], count: number) =>
   Array.from({ length: count }, (_, index) => values[index] ?? "");
 
 const ensureStructuringArrayLength = (
-  values: { month: FinanceInputValue; amount: FinanceInputValue }[],
+  values: StructuringFeeInstallment[],
   count: number,
 ) =>
-  Array.from({ length: count }, (_, index) => values[index] ?? { month: "", amount: "" });
+  Array.from({ length: count }, (_, index) => values[index] ?? EMPTY_STRUCTURING_INSTALLMENT);
 
 const toCountValue = (value: FinanceInputValue) => {
   if (value === "") {
