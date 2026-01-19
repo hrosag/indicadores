@@ -45,7 +45,10 @@ const sectionStyle: CSSProperties = {
 const formatNumberInput = (value: number | "") => (value === "" ? "" : String(value));
 
 const sumValues = (values: FinanceInputValue[]) =>
-  values.reduce((total, value) => total + (value === "" ? 0 : Number(value)), 0);
+  values.reduce<number>((total, value) => {
+    const add = value === "" ? 0 : Number(value);
+    return total + (Number.isNaN(add) ? 0 : add);
+  }, 0);
 
 const ensureArrayLength = (values: FinanceInputValue[], count: number) =>
   Array.from({ length: count }, (_, index) => values[index] ?? "");
