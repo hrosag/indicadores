@@ -52,6 +52,8 @@ const formatNumberInput = (value: number | "") => (value === "" ? "" : String(va
 
 type StructuringFeeInstallment = { month: FinanceInputValue; amount: FinanceInputValue };
 const EMPTY_STRUCTURING_INSTALLMENT: StructuringFeeInstallment = { month: "", amount: "" };
+type Tranche = { month: FinanceInputValue; amount: FinanceInputValue };
+const EMPTY_TRANCHE: Tranche = { month: "", amount: "" };
 
 const sumValues = (values: Array<{ amount: FinanceInputValue }>) =>
   values.reduce<number>((total, value) => {
@@ -73,6 +75,9 @@ const ensureStructuringFeeLength = (
   count: number,
 ) =>
   Array.from({ length: count }, (_, index) => values[index] ?? EMPTY_STRUCTURING_INSTALLMENT);
+
+const ensureTrancheLength = (values: Tranche[], count: number) =>
+  Array.from({ length: count }, (_, index) => values[index] ?? EMPTY_TRANCHE);
 
 const toSafeCount = (value: FinanceInputValue) => {
   if (value === "") {
@@ -138,6 +143,7 @@ export default function FinancingSimulationDetailPage({
   const [insuranceText, setInsuranceText] = useState("");
   const [guaranteePctText, setGuaranteePctText] = useState("");
   const [structuringFeeAmountTexts, setStructuringFeeAmountTexts] = useState<string[]>([]);
+  const [financedTrancheAmountTexts, setFinancedTrancheAmountTexts] = useState<string[]>([]);
   const [managementFeeFixedText, setManagementFeeFixedText] = useState("");
   const [managementFeeValueTexts, setManagementFeeValueTexts] = useState<string[]>([]);
 
@@ -147,16 +153,30 @@ export default function FinancingSimulationDetailPage({
     () => sumValues(inputs.structuring_fee_installments),
     [inputs.structuring_fee_installments],
   );
+  const financedTranchesTotal = useMemo(
+    () => sumValues(inputs.financed_tranches),
+    [inputs.financed_tranches],
+  );
   const managementFeeTotal = useMemo(
     () => sumSimpleValues(inputs.management_fee_values),
     [inputs.management_fee_values],
   );
   const totalGranted = useMemo(() => {
-    const financedValue = inputs.financed_value === "" ? 0 : Number(inputs.financed_value);
+    const financedValue = inputs.financed_is_parceled
+      ? financedTranchesTotal
+      : inputs.financed_value === ""
+        ? 0
+        : Number(inputs.financed_value);
     const financedExpenses =
       inputs.financed_expenses_amount === "" ? 0 : Number(inputs.financed_expenses_amount);
     return financedValue + financedExpenses + structuringFeeTotal;
-  }, [inputs.financed_expenses_amount, inputs.financed_value, structuringFeeTotal]);
+  }, [
+    financedTranchesTotal,
+    inputs.financed_expenses_amount,
+    inputs.financed_is_parceled,
+    inputs.financed_value,
+    structuringFeeTotal,
+  ]);
   const termMonths = useMemo(() => {
     const construction =
       inputs.construction_months === "" ? null : Number(inputs.construction_months);
@@ -231,6 +251,12 @@ export default function FinancingSimulationDetailPage({
   }, [inputs.structuring_fee_installments]);
 
   useEffect(() => {
+    setFinancedTrancheAmountTexts(
+      inputs.financed_tranches.map((entry) => formatCurrencyValue(entry.amount)),
+    );
+  }, [inputs.financed_tranches]);
+
+  useEffect(() => {
     setManagementFeeFixedText(formatCurrencyValue(inputs.management_fee_fixed_amount));
   }, [inputs.management_fee_fixed_amount]);
 
@@ -259,6 +285,15 @@ export default function FinancingSimulationDetailPage({
     }));
   };
 
+  const updateFinancedTrancheCount = (value: FinanceInputValue) => {
+    const count = toSafeCount(value);
+    setInputs((prev) => ({
+      ...prev,
+      financed_tranches_count: value,
+      financed_tranches: ensureTrancheLength(prev.financed_tranches, count),
+    }));
+  };
+
   const updateManagementFeeMonths = (value: FinanceInputValue) => {
     const count = toSafeCount(value);
     setInputs((prev) => ({
@@ -271,6 +306,17 @@ export default function FinancingSimulationDetailPage({
         : ensureArrayLength(prev.management_fee_values, count),
     }));
   };
+
+  useEffect(() => {
+    if (!inputs.financed_is_parceled) {
+      return;
+    }
+    const nextValue = financedTranchesTotal;
+    if (inputs.financed_value === nextValue) {
+      return;
+    }
+    setInputs((prev) => ({ ...prev, financed_value: nextValue }));
+  }, [financedTranchesTotal, inputs.financed_is_parceled, inputs.financed_value]);
 
   const handleSave = async () => {
     setStatus(null);
@@ -382,6 +428,49 @@ export default function FinancingSimulationDetailPage({
 
       <section style={sectionStyle}>
         <h2 style={{ margin: 0 }}>Valores (R$)</h2>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12,
+            color: "#444",
+            fontWeight: 500,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={inputs.financed_is_parceled}
+            onChange={(event) => {
+              const nextChecked = event.target.checked;
+              setInputs((prev) => {
+                if (!nextChecked) {
+                  return { ...prev, financed_is_parceled: false };
+                }
+                const nextCount =
+                  prev.financed_tranches_count === "" ? 1 : prev.financed_tranches_count;
+                const count = toSafeCount(nextCount);
+                let nextTranches = ensureTrancheLength(prev.financed_tranches, count);
+                if (nextTranches.length > 0 && nextTranches[0].month === "") {
+                  nextTranches = [...nextTranches];
+                  nextTranches[0] = {
+                    ...nextTranches[0],
+                    month: 0,
+                    amount:
+                      prev.financed_value === "" ? nextTranches[0].amount : prev.financed_value,
+                  };
+                }
+                return {
+                  ...prev,
+                  financed_is_parceled: true,
+                  financed_tranches_count: nextCount,
+                  financed_tranches: nextTranches,
+                };
+              });
+            }}
+          />
+          Liberação parcelada (tranches)?
+        </label>
         <div
           style={{
             display: "grid",
@@ -389,26 +478,28 @@ export default function FinancingSimulationDetailPage({
             gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           }}
         >
-          <div>
-            <div style={labelStyle}>Valor financiado</div>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={financedValueText}
-              onFocus={() =>
-                setFinancedValueText(
-                  inputs.financed_value === "" ? "" : String(inputs.financed_value),
-                )
-              }
-              onChange={(event) => setFinancedValueText(event.target.value)}
-              onBlur={(event) => {
-                const parsed = parseDecimalText(event.target.value);
-                updateInput("financed_value", parsed);
-                setFinancedValueText(parsed === "" ? "" : formatCurrencyValue(parsed));
-              }}
-              style={inputStyle}
-            />
-          </div>
+          {!inputs.financed_is_parceled && (
+            <div>
+              <div style={labelStyle}>Valor financiado</div>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={financedValueText}
+                onFocus={() =>
+                  setFinancedValueText(
+                    inputs.financed_value === "" ? "" : String(inputs.financed_value),
+                  )
+                }
+                onChange={(event) => setFinancedValueText(event.target.value)}
+                onBlur={(event) => {
+                  const parsed = parseDecimalText(event.target.value);
+                  updateInput("financed_value", parsed);
+                  setFinancedValueText(parsed === "" ? "" : formatCurrencyValue(parsed));
+                }}
+                style={inputStyle}
+              />
+            </div>
+          )}
           <div>
             <div style={labelStyle}>Desp. financiada</div>
             <input
@@ -432,6 +523,105 @@ export default function FinancingSimulationDetailPage({
             />
           </div>
         </div>
+        {inputs.financed_is_parceled && (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ maxWidth: 220 }}>
+              <div style={labelStyle}>Em quantas tranches?</div>
+              <input
+                type="number"
+                value={formatNumberInput(inputs.financed_tranches_count)}
+                onChange={(event) =>
+                  updateFinancedTrancheCount(
+                    event.target.value === "" ? "" : Number(event.target.value),
+                  )
+                }
+                style={compactInputStyle}
+              />
+            </div>
+            <div style={{ display: "grid", gap: 12 }}>
+              {inputs.financed_tranches.map((value, index) => (
+                <div
+                  key={`financed-tranche-${index}`}
+                  style={{
+                    display: "grid",
+                    gap: 8,
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  }}
+                >
+                  <div>
+                    <div style={labelStyle}>{`Tranche ${index + 1} – Mês (0 = entrada)`}</div>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={formatNumberInput(value.month)}
+                      onChange={(event) => {
+                        const nextValue =
+                          event.target.value === "" ? "" : Number(event.target.value);
+                        setInputs((prev) => {
+                          const nextTranches = [...prev.financed_tranches];
+                          nextTranches[index] = {
+                            ...nextTranches[index],
+                            month: nextValue,
+                          };
+                          return { ...prev, financed_tranches: nextTranches };
+                        });
+                      }}
+                      style={compactInputStyle}
+                    />
+                  </div>
+                  <div>
+                    <div style={labelStyle}>{`Tranche ${index + 1} – Valor (R$)`}</div>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={financedTrancheAmountTexts[index] ?? ""}
+                      onFocus={() =>
+                        setFinancedTrancheAmountTexts((prev) => {
+                          const next = [...prev];
+                          next[index] = value.amount === "" ? "" : String(value.amount);
+                          return next;
+                        })
+                      }
+                      onChange={(event) =>
+                        setFinancedTrancheAmountTexts((prev) => {
+                          const next = [...prev];
+                          next[index] = event.target.value;
+                          return next;
+                        })
+                      }
+                      onBlur={(event) => {
+                        const parsed = parseDecimalText(event.target.value);
+                        setInputs((prev) => {
+                          const nextTranches = [...prev.financed_tranches];
+                          nextTranches[index] = {
+                            ...nextTranches[index],
+                            amount: parsed,
+                          };
+                          return { ...prev, financed_tranches: nextTranches };
+                        });
+                        setFinancedTrancheAmountTexts((prev) => {
+                          const next = [...prev];
+                          next[index] = parsed === "" ? "" : formatCurrencyValue(parsed);
+                          return next;
+                        });
+                      }}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div style={labelStyle}>Total liberado (R$)</div>
+              <input
+                type="text"
+                value={formatCurrencyValue(financedTranchesTotal)}
+                readOnly
+                style={{ ...inputStyle, background: "#f5f5f5" }}
+              />
+            </div>
+          </div>
+        )}
       </section>
 
       <section style={sectionStyle}>
@@ -507,7 +697,7 @@ export default function FinancingSimulationDetailPage({
                 }}
               >
                 <div>
-                  <div style={labelStyle}>{`Parcela ${index + 1} – Mês`}</div>
+                  <div style={labelStyle}>{`Parcela ${index + 1} – Mês (0 = entrada)`}</div>
                   <input
                     type="number"
                     inputMode="numeric"
