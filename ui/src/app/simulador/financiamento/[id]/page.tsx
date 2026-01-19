@@ -50,6 +50,9 @@ const compactInputStyle: CSSProperties = {
 
 const formatNumberInput = (value: number | "") => (value === "" ? "" : String(value));
 
+type StructuringFeeInstallment = { month: FinanceInputValue; amount: FinanceInputValue };
+const EMPTY_STRUCTURING_INSTALLMENT: StructuringFeeInstallment = { month: "", amount: "" };
+
 const sumValues = (values: Array<{ amount: FinanceInputValue }>) =>
   values.reduce<number>((total, value) => {
     const add = value.amount === "" ? 0 : Number(value.amount);
@@ -66,10 +69,10 @@ const ensureArrayLength = (values: FinanceInputValue[], count: number) =>
   Array.from({ length: count }, (_, index) => values[index] ?? "");
 
 const ensureStructuringFeeLength = (
-  values: { month: FinanceInputValue; amount: FinanceInputValue }[],
+  values: StructuringFeeInstallment[],
   count: number,
 ) =>
-  Array.from({ length: count }, (_, index) => values[index] ?? { month: "", amount: "" });
+  Array.from({ length: count }, (_, index) => values[index] ?? EMPTY_STRUCTURING_INSTALLMENT);
 
 const toSafeCount = (value: FinanceInputValue) => {
   if (value === "") {
