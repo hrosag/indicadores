@@ -4,10 +4,15 @@ export type FinanceAmortizationType = "SAC" | "PRICE" | "BULLET";
 
 type StructuringFeeInstallment = { month: FinanceInputValue; amount: FinanceInputValue };
 const EMPTY_STRUCTURING_INSTALLMENT: StructuringFeeInstallment = { month: "", amount: "" };
+type FinanceTranche = { month: FinanceInputValue; amount: FinanceInputValue };
+const EMPTY_TRANCHE: FinanceTranche = { month: "", amount: "" };
 
 export type FinanceSimulationInputs = {
   amortization_type: FinanceAmortizationType;
   financed_value: FinanceInputValue;
+  financed_is_parceled: boolean;
+  financed_tranches_count: FinanceInputValue;
+  financed_tranches: FinanceTranche[];
   financed_expenses_amount: FinanceInputValue;
   guarantee_value: FinanceInputValue;
   guarantee_pct: FinanceInputValue;
@@ -71,6 +76,27 @@ const toStructuringFeeInstallments = (value: unknown) => {
   });
 };
 
+const toFinanceTranches = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((entry, index) => {
+    if (typeof entry === "object" && entry !== null) {
+      const record = entry as Record<string, unknown>;
+      return {
+        month: toNumberInput(record.month, ""),
+        amount: toNumberInput(record.amount, ""),
+      };
+    }
+
+    return {
+      month: index + 1,
+      amount: toNumberInput(entry, ""),
+    };
+  });
+};
+
 const ensureArrayLength = (values: FinanceInputValue[], count: number) =>
   Array.from({ length: count }, (_, index) => values[index] ?? "");
 
@@ -79,6 +105,9 @@ const ensureStructuringArrayLength = (
   count: number,
 ) =>
   Array.from({ length: count }, (_, index) => values[index] ?? EMPTY_STRUCTURING_INSTALLMENT);
+
+const ensureTrancheLength = (values: FinanceTranche[], count: number) =>
+  Array.from({ length: count }, (_, index) => values[index] ?? EMPTY_TRANCHE);
 
 const toCountValue = (value: FinanceInputValue) => {
   if (value === "") {
@@ -94,6 +123,9 @@ const toCountValue = (value: FinanceInputValue) => {
 export const defaultFinanceSimulationInputs: FinanceSimulationInputs = {
   amortization_type: "BULLET",
   financed_value: "",
+  financed_is_parceled: false,
+  financed_tranches_count: "",
+  financed_tranches: [],
   financed_expenses_amount: "",
   guarantee_value: "",
   guarantee_pct: "",
@@ -109,6 +141,12 @@ export const defaultFinanceSimulationInputs: FinanceSimulationInputs = {
   management_fee_values: [],
 };
 
+const sumTrancheAmounts = (values: FinanceTranche[]) =>
+  values.reduce<number>((total, value) => {
+    const add = value.amount === "" ? 0 : Number(value.amount);
+    return total + (Number.isNaN(add) ? 0 : add);
+  }, 0);
+
 export const hydrateFinanceInputs = (raw?: Record<string, unknown>) => {
   if (!raw) {
     return { ...defaultFinanceSimulationInputs };
@@ -122,11 +160,24 @@ export const hydrateFinanceInputs = (raw?: Record<string, unknown>) => {
     raw.structuring_fee_installments_count,
     defaultFinanceSimulationInputs.structuring_fee_installments_count,
   );
+  const financed_is_parceled =
+    typeof raw.financed_is_parceled === "boolean"
+      ? raw.financed_is_parceled
+      : defaultFinanceSimulationInputs.financed_is_parceled;
+  const financed_tranches_count_raw = toNumberInput(
+    raw.financed_tranches_count,
+    defaultFinanceSimulationInputs.financed_tranches_count,
+  );
   const management_fee_months = toNumberInput(
     raw.management_fee_months,
     defaultFinanceSimulationInputs.management_fee_months,
   );
   const structuring_fee_installments = toStructuringFeeInstallments(raw.structuring_fee_installments);
+  const financed_tranches = toFinanceTranches(raw.financed_tranches);
+  const financed_tranches_count =
+    financed_tranches_count_raw === "" && financed_tranches.length > 0
+      ? financed_tranches.length
+      : financed_tranches_count_raw;
   const management_fee_values = toInputArray(raw.management_fee_values);
   const management_fee_is_fixed =
     typeof raw.management_fee_is_fixed === "boolean"
@@ -137,7 +188,10 @@ export const hydrateFinanceInputs = (raw?: Record<string, unknown>) => {
     defaultFinanceSimulationInputs.management_fee_fixed_amount,
   );
   const normalizedStructuringCount = toCountValue(structuring_fee_installments_count);
+  const normalizedTrancheCount = toCountValue(financed_tranches_count);
   const normalizedManagementCount = toCountValue(management_fee_months);
+  const trancheCount =
+    normalizedTrancheCount > 0 ? normalizedTrancheCount : financed_tranches.length;
   const hasManagementValues = Array.isArray(raw.management_fee_values)
     ? raw.management_fee_values.length > 0
     : false;
@@ -151,13 +205,21 @@ export const hydrateFinanceInputs = (raw?: Record<string, unknown>) => {
           management_fee_fixed_amount === "" ? "" : management_fee_fixed_amount,
         )
       : normalizedManagementValues;
+  const financedValueRaw = toNumberInput(
+    raw.financed_value,
+    defaultFinanceSimulationInputs.financed_value,
+  );
+  const financed_value =
+    financed_is_parceled && financedValueRaw === ""
+      ? sumTrancheAmounts(financed_tranches)
+      : financedValueRaw;
 
   return {
     amortization_type,
-    financed_value: toNumberInput(
-      raw.financed_value,
-      defaultFinanceSimulationInputs.financed_value,
-    ),
+    financed_value,
+    financed_is_parceled,
+    financed_tranches_count,
+    financed_tranches: ensureTrancheLength(financed_tranches, trancheCount),
     financed_expenses_amount: toNumberInput(
       raw.financed_expenses_amount,
       defaultFinanceSimulationInputs.financed_expenses_amount,
@@ -200,13 +262,26 @@ const normalizeStructuringInstallments = (
     amount: toNumberValue(entry.amount),
   }));
 
+const normalizeTranches = (values: FinanceTranche[], count: number) =>
+  ensureTrancheLength(values, count).map((entry) => ({
+    month: toNumberValue(entry.month),
+    amount: toNumberValue(entry.amount),
+  }));
+
 export const normalizeFinanceInputs = (inputs: FinanceSimulationInputs) => {
   const structuringCount = toCountValue(inputs.structuring_fee_installments_count);
+  const trancheCount = toCountValue(inputs.financed_tranches_count);
   const managementCount = toCountValue(inputs.management_fee_months);
+  const financedValue = inputs.financed_is_parceled
+    ? sumTrancheAmounts(inputs.financed_tranches)
+    : inputs.financed_value;
 
   return {
     amortization_type: inputs.amortization_type,
-    financed_value: toNumberValue(inputs.financed_value),
+    financed_value: toNumberValue(financedValue),
+    financed_is_parceled: inputs.financed_is_parceled,
+    financed_tranches_count: toNumberValue(inputs.financed_tranches_count),
+    financed_tranches: normalizeTranches(inputs.financed_tranches, trancheCount),
     financed_expenses_amount: toNumberValue(inputs.financed_expenses_amount),
     guarantee_value: toNumberValue(inputs.guarantee_value),
     guarantee_pct: toNumberValue(inputs.guarantee_pct),
