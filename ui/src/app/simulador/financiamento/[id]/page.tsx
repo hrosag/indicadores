@@ -28,9 +28,10 @@ const inputStyle: CSSProperties = {
 };
 
 const labelStyle: CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  marginBottom: 6,
+  fontSize: 11,
+  fontWeight: 500,
+  marginBottom: 4,
+  color: "#444",
 };
 
 const sectionStyle: CSSProperties = {
@@ -42,9 +43,23 @@ const sectionStyle: CSSProperties = {
   gap: 12,
 };
 
+const compactInputStyle: CSSProperties = {
+  ...inputStyle,
+  maxWidth: 160,
+};
+
 const formatNumberInput = (value: number | "") => (value === "" ? "" : String(value));
 
-const sumValues = (values: FinanceInputValue[]) =>
+type StructuringFeeInstallment = { month: FinanceInputValue; amount: FinanceInputValue };
+const EMPTY_STRUCTURING_INSTALLMENT: StructuringFeeInstallment = { month: "", amount: "" };
+
+const sumValues = (values: Array<{ amount: FinanceInputValue }>) =>
+  values.reduce<number>((total, value) => {
+    const add = value.amount === "" ? 0 : Number(value.amount);
+    return total + (Number.isNaN(add) ? 0 : add);
+  }, 0);
+
+const sumSimpleValues = (values: FinanceInputValue[]) =>
   values.reduce<number>((total, value) => {
     const add = value === "" ? 0 : Number(value);
     return total + (Number.isNaN(add) ? 0 : add);
@@ -52,6 +67,12 @@ const sumValues = (values: FinanceInputValue[]) =>
 
 const ensureArrayLength = (values: FinanceInputValue[], count: number) =>
   Array.from({ length: count }, (_, index) => values[index] ?? "");
+
+const ensureStructuringFeeLength = (
+  values: StructuringFeeInstallment[],
+  count: number,
+) =>
+  Array.from({ length: count }, (_, index) => values[index] ?? EMPTY_STRUCTURING_INSTALLMENT);
 
 const toSafeCount = (value: FinanceInputValue) => {
   if (value === "") {
@@ -64,6 +85,40 @@ const toSafeCount = (value: FinanceInputValue) => {
   return Math.max(0, Math.trunc(numeric));
 };
 
+const percentFormatter = new Intl.NumberFormat("pt-BR", {
+  maximumFractionDigits: 6,
+});
+
+const formatPercentValue = (value: FinanceInputValue) =>
+  value === "" ? "" : percentFormatter.format(Number(value));
+
+const parseDecimalText = (text: string): FinanceInputValue => {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const normalized = trimmed.replace(/[^\d,.-]/g, "");
+  if (!normalized) {
+    return "";
+  }
+  const value = normalized.includes(",")
+    ? normalized.replace(/\./g, "").replace(",", ".")
+    : normalized;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? "" : parsed;
+};
+
+const currencyFormatter = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
+
+const formatCurrencyValue = (value: FinanceInputValue | number) => {
+  if (value === "" || value === null || Number.isNaN(Number(value))) {
+    return "";
+  }
+  return currencyFormatter.format(Number(value));
+};
 export default function FinancingSimulationDetailPage({
   params,
 }: {
@@ -77,6 +132,14 @@ export default function FinancingSimulationDetailPage({
   );
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [financedValueText, setFinancedValueText] = useState("");
+  const [financedExpensesText, setFinancedExpensesText] = useState("");
+  const [guaranteeValueText, setGuaranteeValueText] = useState("");
+  const [insuranceText, setInsuranceText] = useState("");
+  const [guaranteePctText, setGuaranteePctText] = useState("");
+  const [structuringFeeAmountTexts, setStructuringFeeAmountTexts] = useState<string[]>([]);
+  const [managementFeeFixedText, setManagementFeeFixedText] = useState("");
+  const [managementFeeValueTexts, setManagementFeeValueTexts] = useState<string[]>([]);
 
   const simulationId = params.id;
 
@@ -85,7 +148,7 @@ export default function FinancingSimulationDetailPage({
     [inputs.structuring_fee_installments],
   );
   const managementFeeTotal = useMemo(
-    () => sumValues(inputs.management_fee_values),
+    () => sumSimpleValues(inputs.management_fee_values),
     [inputs.management_fee_values],
   );
   const totalGranted = useMemo(() => {
@@ -141,6 +204,42 @@ export default function FinancingSimulationDetailPage({
     };
   }, [isAdmin, loading, simulationId]);
 
+  useEffect(() => {
+    setFinancedValueText(formatCurrencyValue(inputs.financed_value));
+  }, [inputs.financed_value]);
+
+  useEffect(() => {
+    setFinancedExpensesText(formatCurrencyValue(inputs.financed_expenses_amount));
+  }, [inputs.financed_expenses_amount]);
+
+  useEffect(() => {
+    setGuaranteeValueText(formatCurrencyValue(inputs.guarantee_value));
+  }, [inputs.guarantee_value]);
+
+  useEffect(() => {
+    setInsuranceText(formatPercentValue(inputs.insurance_pct));
+  }, [inputs.insurance_pct]);
+
+  useEffect(() => {
+    setGuaranteePctText(formatPercentValue(inputs.guarantee_pct));
+  }, [inputs.guarantee_pct]);
+
+  useEffect(() => {
+    setStructuringFeeAmountTexts(
+      inputs.structuring_fee_installments.map((entry) => formatCurrencyValue(entry.amount)),
+    );
+  }, [inputs.structuring_fee_installments]);
+
+  useEffect(() => {
+    setManagementFeeFixedText(formatCurrencyValue(inputs.management_fee_fixed_amount));
+  }, [inputs.management_fee_fixed_amount]);
+
+  useEffect(() => {
+    setManagementFeeValueTexts(
+      inputs.management_fee_values.map((entry) => formatCurrencyValue(entry)),
+    );
+  }, [inputs.management_fee_values]);
+
   const updateInput = <K extends keyof FinanceSimulationInputs>(
     key: K,
     value: FinanceSimulationInputs[K],
@@ -153,7 +252,7 @@ export default function FinancingSimulationDetailPage({
     setInputs((prev) => ({
       ...prev,
       structuring_fee_installments_count: value,
-      structuring_fee_installments: ensureArrayLength(
+      structuring_fee_installments: ensureStructuringFeeLength(
         prev.structuring_fee_installments,
         count,
       ),
@@ -165,7 +264,11 @@ export default function FinancingSimulationDetailPage({
     setInputs((prev) => ({
       ...prev,
       management_fee_months: value,
-      management_fee_values: ensureArrayLength(prev.management_fee_values, count),
+      management_fee_values: prev.management_fee_is_fixed
+        ? Array.from({ length: count }, () =>
+            prev.management_fee_fixed_amount === "" ? "" : prev.management_fee_fixed_amount,
+          )
+        : ensureArrayLength(prev.management_fee_values, count),
     }));
   };
 
@@ -256,7 +359,7 @@ export default function FinancingSimulationDetailPage({
 
       <section style={sectionStyle}>
         <h2 style={{ margin: 0 }}>Tipo de financiamento</h2>
-        <div style={{ display: "grid", gap: 12, maxWidth: 260 }}>
+        <div style={{ display: "grid", gap: 12, maxWidth: 320 }}>
           <div>
             <div style={labelStyle}>Tipo de financiamento</div>
             <select
@@ -267,7 +370,7 @@ export default function FinancingSimulationDetailPage({
                   event.target.value as FinanceSimulationInputs["amortization_type"],
                 )
               }
-              style={inputStyle}
+              style={{ ...inputStyle, maxWidth: 240 }}
             >
               <option value="SAC">SAC</option>
               <option value="PRICE">PRICE</option>
@@ -279,32 +382,52 @@ export default function FinancingSimulationDetailPage({
 
       <section style={sectionStyle}>
         <h2 style={{ margin: 0 }}>Valores (R$)</h2>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          }}
+        >
           <div>
             <div style={labelStyle}>Valor financiado</div>
             <input
-              type="number"
-              value={formatNumberInput(inputs.financed_value)}
-              onChange={(event) =>
-                updateInput(
-                  "financed_value",
-                  event.target.value === "" ? "" : Number(event.target.value),
+              type="text"
+              inputMode="decimal"
+              value={financedValueText}
+              onFocus={() =>
+                setFinancedValueText(
+                  inputs.financed_value === "" ? "" : String(inputs.financed_value),
                 )
               }
+              onChange={(event) => setFinancedValueText(event.target.value)}
+              onBlur={(event) => {
+                const parsed = parseDecimalText(event.target.value);
+                updateInput("financed_value", parsed);
+                setFinancedValueText(parsed === "" ? "" : formatCurrencyValue(parsed));
+              }}
               style={inputStyle}
             />
           </div>
           <div>
             <div style={labelStyle}>Desp. financiada</div>
             <input
-              type="number"
-              value={formatNumberInput(inputs.financed_expenses_amount)}
-              onChange={(event) =>
-                updateInput(
-                  "financed_expenses_amount",
-                  event.target.value === "" ? "" : Number(event.target.value),
+              type="text"
+              inputMode="decimal"
+              value={financedExpensesText}
+              onFocus={() =>
+                setFinancedExpensesText(
+                  inputs.financed_expenses_amount === ""
+                    ? ""
+                    : String(inputs.financed_expenses_amount),
                 )
               }
+              onChange={(event) => setFinancedExpensesText(event.target.value)}
+              onBlur={(event) => {
+                const parsed = parseDecimalText(event.target.value);
+                updateInput("financed_expenses_amount", parsed);
+                setFinancedExpensesText(parsed === "" ? "" : formatCurrencyValue(parsed));
+              }}
               style={inputStyle}
             />
           </div>
@@ -313,27 +436,47 @@ export default function FinancingSimulationDetailPage({
 
       <section style={sectionStyle}>
         <h2 style={{ margin: 0 }}>Garantias</h2>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          }}
+        >
           <div>
             <div style={labelStyle}>Valor da garantia (R$)</div>
             <input
-              type="number"
-              value={formatNumberInput(inputs.guarantee_value)}
-              onChange={(event) =>
-                updateInput("guarantee_value", event.target.value === "" ? "" : Number(event.target.value))
+              type="text"
+              inputMode="decimal"
+              value={guaranteeValueText}
+              onFocus={() =>
+                setGuaranteeValueText(
+                  inputs.guarantee_value === "" ? "" : String(inputs.guarantee_value),
+                )
               }
+              onChange={(event) => setGuaranteeValueText(event.target.value)}
+              onBlur={(event) => {
+                const parsed = parseDecimalText(event.target.value);
+                updateInput("guarantee_value", parsed);
+                setGuaranteeValueText(parsed === "" ? "" : formatCurrencyValue(parsed));
+              }}
               style={inputStyle}
             />
           </div>
           <div>
             <div style={labelStyle}>% de garantia</div>
             <input
-              type="number"
-              value={formatNumberInput(inputs.guarantee_pct)}
-              onChange={(event) =>
-                updateInput("guarantee_pct", event.target.value === "" ? "" : Number(event.target.value))
-              }
-              style={inputStyle}
+              type="text"
+              inputMode="decimal"
+              value={guaranteePctText}
+              onFocus={() => setGuaranteePctText(formatPercentValue(inputs.guarantee_pct))}
+              onChange={(event) => setGuaranteePctText(event.target.value)}
+              onBlur={(event) => {
+                const parsed = parseDecimalText(event.target.value);
+                updateInput("guarantee_pct", parsed);
+                setGuaranteePctText(parsed === "" ? "" : formatPercentValue(parsed));
+              }}
+              style={{ ...inputStyle, maxWidth: 160 }}
             />
           </div>
         </div>
@@ -350,34 +493,86 @@ export default function FinancingSimulationDetailPage({
               onChange={(event) =>
                 updateStructuringFeeCount(event.target.value === "" ? "" : Number(event.target.value))
               }
-              style={inputStyle}
+              style={compactInputStyle}
             />
           </div>
           <div style={{ display: "grid", gap: 12 }}>
             {inputs.structuring_fee_installments.map((value, index) => (
-              <div key={`structuring-fee-${index}`}>
-                <div style={labelStyle}>{`Parcela ${index + 1} (R$)`}</div>
-                <input
-                  type="number"
-                  value={formatNumberInput(value)}
-                  onChange={(event) => {
-                    const nextValue = event.target.value === "" ? "" : Number(event.target.value);
-                    setInputs((prev) => {
-                      const nextInstallments = [...prev.structuring_fee_installments];
-                      nextInstallments[index] = nextValue;
-                      return { ...prev, structuring_fee_installments: nextInstallments };
-                    });
-                  }}
-                  style={inputStyle}
-                />
+              <div
+                key={`structuring-fee-${index}`}
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                }}
+              >
+                <div>
+                  <div style={labelStyle}>{`Parcela ${index + 1} – Mês`}</div>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={formatNumberInput(value.month)}
+                    onChange={(event) => {
+                      const nextValue = event.target.value === "" ? "" : Number(event.target.value);
+                      setInputs((prev) => {
+                        const nextInstallments = [...prev.structuring_fee_installments];
+                        nextInstallments[index] = {
+                          ...nextInstallments[index],
+                          month: nextValue,
+                        };
+                        return { ...prev, structuring_fee_installments: nextInstallments };
+                      });
+                    }}
+                    style={compactInputStyle}
+                  />
+                </div>
+                <div>
+                  <div style={labelStyle}>{`Parcela ${index + 1} – Valor (R$)`}</div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={structuringFeeAmountTexts[index] ?? ""}
+                    onFocus={() =>
+                      setStructuringFeeAmountTexts((prev) => {
+                        const next = [...prev];
+                        next[index] = value.amount === "" ? "" : String(value.amount);
+                        return next;
+                      })
+                    }
+                    onChange={(event) =>
+                      setStructuringFeeAmountTexts((prev) => {
+                        const next = [...prev];
+                        next[index] = event.target.value;
+                        return next;
+                      })
+                    }
+                    onBlur={(event) => {
+                      const parsed = parseDecimalText(event.target.value);
+                      setInputs((prev) => {
+                        const nextInstallments = [...prev.structuring_fee_installments];
+                        nextInstallments[index] = {
+                          ...nextInstallments[index],
+                          amount: parsed,
+                        };
+                        return { ...prev, structuring_fee_installments: nextInstallments };
+                      });
+                      setStructuringFeeAmountTexts((prev) => {
+                        const next = [...prev];
+                        next[index] = parsed === "" ? "" : formatCurrencyValue(parsed);
+                        return next;
+                      });
+                    }}
+                    style={inputStyle}
+                  />
+                </div>
               </div>
             ))}
           </div>
           <div>
             <div style={labelStyle}>Total taxa de estruturação (R$)</div>
             <input
-              type="number"
-              value={formatNumberInput(structuringFeeTotal)}
+              type="text"
+              value={formatCurrencyValue(structuringFeeTotal)}
               readOnly
               style={{ ...inputStyle, background: "#f5f5f5" }}
             />
@@ -390,8 +585,8 @@ export default function FinancingSimulationDetailPage({
         <div style={{ maxWidth: 240 }}>
           <div style={labelStyle}>Total concedido (R$)</div>
           <input
-            type="number"
-            value={formatNumberInput(totalGranted)}
+            type="text"
+            value={formatCurrencyValue(totalGranted)}
             readOnly
             style={{ ...inputStyle, background: "#f5f5f5" }}
           />
@@ -400,7 +595,13 @@ export default function FinancingSimulationDetailPage({
 
       <section style={sectionStyle}>
         <h2 style={{ margin: 0 }}>Prazos (meses)</h2>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          }}
+        >
           <div>
             <div style={labelStyle}>Prazo de obra</div>
             <input
@@ -412,7 +613,7 @@ export default function FinancingSimulationDetailPage({
                   event.target.value === "" ? "" : Number(event.target.value),
                 )
               }
-              style={inputStyle}
+              style={compactInputStyle}
             />
           </div>
           <div>
@@ -423,7 +624,7 @@ export default function FinancingSimulationDetailPage({
               onChange={(event) =>
                 updateInput("grace_months", event.target.value === "" ? "" : Number(event.target.value))
               }
-              style={inputStyle}
+              style={compactInputStyle}
             />
           </div>
           <div>
@@ -432,7 +633,7 @@ export default function FinancingSimulationDetailPage({
               type="number"
               value={formatNumberInput(termMonths)}
               readOnly
-              style={{ ...inputStyle, background: "#f5f5f5" }}
+              style={{ ...compactInputStyle, background: "#f5f5f5" }}
             />
           </div>
         </div>
@@ -440,7 +641,13 @@ export default function FinancingSimulationDetailPage({
 
       <section style={sectionStyle}>
         <h2 style={{ margin: 0 }}>Taxas</h2>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          }}
+        >
           <div>
             <div style={labelStyle}>Taxa simulada (a.m.)</div>
             <input
@@ -453,22 +660,23 @@ export default function FinancingSimulationDetailPage({
                   event.target.value === "" ? "" : Number(event.target.value),
                 )
               }
-              style={inputStyle}
+              style={{ ...inputStyle, maxWidth: 200 }}
             />
           </div>
           <div>
             <div style={labelStyle}>Seguro (%)</div>
             <input
-              type="number"
-              step="0.0001"
-              value={formatNumberInput(inputs.insurance_pct)}
-              onChange={(event) =>
-                updateInput(
-                  "insurance_pct",
-                  event.target.value === "" ? "" : Number(event.target.value),
-                )
-              }
-              style={inputStyle}
+              type="text"
+              inputMode="decimal"
+              value={insuranceText}
+              onFocus={() => setInsuranceText(formatPercentValue(inputs.insurance_pct))}
+              onChange={(event) => setInsuranceText(event.target.value)}
+              onBlur={(event) => {
+                const parsed = parseDecimalText(event.target.value);
+                updateInput("insurance_pct", parsed);
+                setInsuranceText(parsed === "" ? "" : formatPercentValue(parsed));
+              }}
+              style={{ ...inputStyle, maxWidth: 200 }}
             />
           </div>
         </div>
@@ -477,7 +685,7 @@ export default function FinancingSimulationDetailPage({
       <section style={sectionStyle}>
         <h2 style={{ margin: 0 }}>Taxa de gestão (mensal)</h2>
         <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ maxWidth: 220 }}>
+          <div style={{ maxWidth: 260 }}>
             <div style={labelStyle}>Incide por quantos meses?</div>
             <input
               type="number"
@@ -485,34 +693,121 @@ export default function FinancingSimulationDetailPage({
               onChange={(event) =>
                 updateManagementFeeMonths(event.target.value === "" ? "" : Number(event.target.value))
               }
-              style={inputStyle}
+              style={compactInputStyle}
             />
           </div>
-          <div style={{ display: "grid", gap: 12 }}>
-            {inputs.management_fee_values.map((value, index) => (
-              <div key={`management-fee-${index}`}>
-                <div style={labelStyle}>{`Mês ${index + 1} – Taxa de gestão (R$)`}</div>
-                <input
-                  type="number"
-                  value={formatNumberInput(value)}
-                  onChange={(event) => {
-                    const nextValue = event.target.value === "" ? "" : Number(event.target.value);
-                    setInputs((prev) => {
-                      const nextValues = [...prev.management_fee_values];
-                      nextValues[index] = nextValue;
-                      return { ...prev, management_fee_values: nextValues };
-                    });
-                  }}
-                  style={inputStyle}
-                />
-              </div>
-            ))}
-          </div>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 12,
+              color: "#444",
+              fontWeight: 500,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={inputs.management_fee_is_fixed}
+              onChange={(event) => {
+                const nextChecked = event.target.checked;
+                setInputs((prev) => {
+                  const count = toSafeCount(prev.management_fee_months);
+                  return {
+                    ...prev,
+                    management_fee_is_fixed: nextChecked,
+                    management_fee_values: nextChecked
+                      ? Array.from({ length: count }, () =>
+                          prev.management_fee_fixed_amount === ""
+                            ? ""
+                            : prev.management_fee_fixed_amount,
+                        )
+                      : prev.management_fee_values,
+                  };
+                });
+              }}
+            />
+            A taxa de gestão é fixa?
+          </label>
+          {inputs.management_fee_is_fixed ? (
+            <div style={{ maxWidth: 240 }}>
+              <div style={labelStyle}>Valor mensal (R$)</div>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={managementFeeFixedText}
+                onFocus={() =>
+                  setManagementFeeFixedText(
+                    inputs.management_fee_fixed_amount === ""
+                      ? ""
+                      : String(inputs.management_fee_fixed_amount),
+                  )
+                }
+                onChange={(event) => setManagementFeeFixedText(event.target.value)}
+                onBlur={(event) => {
+                  const parsed = parseDecimalText(event.target.value);
+                  setInputs((prev) => {
+                    const count = toSafeCount(prev.management_fee_months);
+                    return {
+                      ...prev,
+                      management_fee_fixed_amount: parsed,
+                      management_fee_values: Array.from({ length: count }, () =>
+                        parsed === "" ? "" : parsed,
+                      ),
+                    };
+                  });
+                  setManagementFeeFixedText(parsed === "" ? "" : formatCurrencyValue(parsed));
+                }}
+                style={inputStyle}
+              />
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {inputs.management_fee_values.map((value, index) => (
+                <div key={`management-fee-${index}`}>
+                  <div style={labelStyle}>{`Mês ${index + 1} – Taxa de gestão (R$)`}</div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={managementFeeValueTexts[index] ?? ""}
+                    onFocus={() =>
+                      setManagementFeeValueTexts((prev) => {
+                        const next = [...prev];
+                        next[index] = value === "" ? "" : String(value);
+                        return next;
+                      })
+                    }
+                    onChange={(event) =>
+                      setManagementFeeValueTexts((prev) => {
+                        const next = [...prev];
+                        next[index] = event.target.value;
+                        return next;
+                      })
+                    }
+                    onBlur={(event) => {
+                      const parsed = parseDecimalText(event.target.value);
+                      setInputs((prev) => {
+                        const nextValues = [...prev.management_fee_values];
+                        nextValues[index] = parsed;
+                        return { ...prev, management_fee_values: nextValues };
+                      });
+                      setManagementFeeValueTexts((prev) => {
+                        const next = [...prev];
+                        next[index] = parsed === "" ? "" : formatCurrencyValue(parsed);
+                        return next;
+                      });
+                    }}
+                    style={inputStyle}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
           <div>
             <div style={labelStyle}>Total taxa de gestão (R$)</div>
             <input
-              type="number"
-              value={formatNumberInput(managementFeeTotal)}
+              type="text"
+              value={formatCurrencyValue(managementFeeTotal)}
               readOnly
               style={{ ...inputStyle, background: "#f5f5f5" }}
             />
