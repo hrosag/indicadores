@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import IndicatorTable from "./IndicatorTable";
 import IpcaToolbar, { MetricOption } from "./IpcaToolbar";
 import MainMetricChart from "./MainMetricChart";
@@ -63,8 +63,18 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
   const [availableRange, setAvailableRange] = useState({ min: "", max: "" });
   const [helperMessage, setHelperMessage] = useState<string | null>(null);
   const [showDataLabels, setShowDataLabels] = useState(false);
+  const startRef = useRef(start);
+  const endRef = useRef(end);
 
   const { isAdmin } = useIsAdmin();
+
+  useEffect(() => {
+    startRef.current = start;
+  }, [start]);
+
+  useEffect(() => {
+    endRef.current = end;
+  }, [end]);
 
   const getDefaultRange = useCallback(
     (maxValue: string) => ({
@@ -112,8 +122,8 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
 
       try {
         const auto = options?.auto ?? false;
-        const startValue = options?.start ?? start;
-        const endValue = options?.end ?? end;
+        const startValue = options?.start ?? startRef.current;
+        const endValue = options?.end ?? endRef.current;
         const data = await fetchMonthly({ start: startValue, end: endValue, auto });
         setRows(data);
         const minMax = getMinMaxDate(data);
@@ -129,7 +139,7 @@ export default function IndicatorPage<Row extends IndicatorRowBase>({
         setLoading(false);
       }
     },
-    [end, fetchMonthly, getMinMaxDate, start]
+    [fetchMonthly, getMinMaxDate]
   );
 
   useEffect(() => {
