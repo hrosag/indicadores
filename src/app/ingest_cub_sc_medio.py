@@ -1,22 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import os
 import re
+import sys
+import hashlib
 from io import BytesIO
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 
-import pandas as pd
 import requests
 import openpyxl
+import pandas as pd
 import pytesseract
 from PIL import Image
 
 
-# --------- ajuste aqui ----------
-DOWNLOAD_URL = "COLE_AQUI_O_LINK_DIRETO_DE_DOWNLOAD_DO_XLSX"
-TARGET_SHEET = "2026"
-OUTPUT_XLSX = "cub_sc_residencial_medio_2026_teste.xlsx"
-# --------------------------------
+# =========================
+# Config (teste controlado)
+# =========================
+TARGET_SHEET = os.getenv("CUB_TARGET_SHEET", "2026")  # apenas 2026 para teste
+DOWNLOAD_URL = os.getenv("CUB_XLSX_URL", "").strip()  # defina via env/secret
+OUTPUT_DIR = Path(os.getenv("CUB_OUTPUT_DIR", "out"))
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 MONTHS = {
@@ -25,14 +32,8 @@ MONTHS = {
 }
 
 
-def br_to_float(s: str) -> float:
-    s = s.replace("%", "").strip()
-    s = s.replace(".", "").replace(",", ".")
-    return float(s)
-
-
 @dataclass
-class CubRow:
+class CubMedioRow:
     ano: int
     mes_uso: str
     competencia: str
@@ -42,96 +43,121 @@ class CubRow:
     var_mes: float
     var_ano: float
     var_12m: float
+    xlsx_sha256: str
+    fonte: str
+
+
+def _br_to_float(s: str) -> float:
+    s = s.strip().replace("%", "")
+    s = s.replace(".", "").replace(",", ".")
+    return float(s)
+
+
+def _sha256_bytes(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
 
 
 def download_xlsx(url: str) -> bytes:
-    r = requests.get(url, timeout=120)
+    if not url or "http" not in url:
+        raise SystemExit(
+            "CUB_XLSX_URL não definido. Defina via env/secret (link direto do download do XLSX)."
+        )
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; indicadores-bot/1.0)"
+    }
+    r = requests.get(url, headers=headers, timeout=120)
     r.raise_for_status()
     return r.content
 
 
 def extract_first_image_from_sheet(xlsx_bytes: bytes, sheet_name: str) -> bytes:
     wb = openpyxl.load_workbook(BytesIO(xlsx_bytes))
+
     if sheet_name not in wb.sheetnames:
         raise RuntimeError(f"Aba '{sheet_name}' não encontrada. Abas: {wb.sheetnames}")
-    ws = wb[sheet_name]
 
+    ws = wb[sheet_name]
     imgs = getattr(ws, "_images", [])
     if not imgs:
         raise RuntimeError(f"Nenhuma imagem encontrada na aba '{sheet_name}'.")
 
-    # normalmente é 1 imagem colada por aba
+    # Em geral é uma imagem por aba
     img = imgs[0]
     return img._data()
 
 
 def ocr_image_bytes(img_bytes: bytes) -> str:
     im = Image.open(BytesIO(img_bytes))
-    # OCR em PT (tesseract instalado no SO costuma aceitar 'por')
+
+    # Pequeno boost de legibilidade sem inventar muito
+    im = im.convert("L")  # grayscale
+
+    # OCR em português (se não existir, tesseract cai para eng; ainda costuma funcionar)
     return pytesseract.image_to_string(im, lang="por")
 
 
-def parse_cub_ocr(text: str, target_year: int) -> CubRow:
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
+def _find_month_tokens(text: str) -> list[str]:
+    # captura tokens de mês como palavras isoladas
+    tokens = re.findall(r"\b(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\b", text.upper())
+    return tokens
 
-    # 1) meses (ex.: "DEZ", "JAN")
-    months_found = [l for l in lines if l in MONTHS]
-    if len(months_found) < 2:
-        raise RuntimeError(f"Não consegui achar 2 meses (DEZ/JAN etc.) no OCR. Texto:\n{text}")
 
-    mes_ref = months_found[0]
-    mes_uso = months_found[1]
+def _find_numbers(text: str) -> list[str]:
+    # captura:
+    # - CUB: 3.012,64
+    # - percentuais: 0,13% / 4,32%
+    # Mantém ordem de aparição
+    pat = re.compile(r"\b\d{1,3}(?:\.\d{3})*,\d{2}%?\b")
+    return pat.findall(text.replace(" ", ""))
 
-    # 2) números (ex.: "3.012,64", "0,13%", "4,32%", "4,32%")
-    nums = [l for l in lines if re.search(r"\d", l) and ("," in l or "." in l)]
-    # tenta manter só os 4 primeiros “característicos”
-    nums = nums[:4]
+
+def parse_cub_medio_from_ocr(text: str, sheet_year: int) -> CubMedioRow:
+    t = text.upper()
+
+    months = _find_month_tokens(t)
+    if len(months) < 2:
+        raise RuntimeError(f"Não consegui extrair meses (DEZ/JAN etc.). OCR:\n{text}")
+
+    mes_referencia = months[0]
+    mes_uso = months[1]
+
+    nums = _find_numbers(t)
+    # Esperado: [CUB, %mes, %ano, %12m]
     if len(nums) < 4:
-        raise RuntimeError(f"Não consegui achar 4 números no OCR. Achei: {nums}. Texto:\n{text}")
+        raise RuntimeError(f"Não consegui extrair 4 números (CUB + 3 %). Encontrei {nums}. OCR:\n{text}")
 
-    cub_medio = br_to_float(nums[0])
-    var_mes = br_to_float(nums[1])
-    var_ano = br_to_float(nums[2])
-    var_12m = br_to_float(nums[3])
+    cub_medio = _br_to_float(nums[0])
+    var_mes = _br_to_float(nums[1])
+    var_ano = _br_to_float(nums[2])
+    var_12m = _br_to_float(nums[3])
 
-    # Regras de competência (padrão dessas planilhas):
-    # "Dados do mês de DEZ" -> mês de referência (ano anterior)
-    # "Para ser usado em JAN" -> competência do ano da aba (target_year)
-    ref_month_num = MONTHS[mes_ref]
     use_month_num = MONTHS[mes_uso]
+    ref_month_num = MONTHS[mes_referencia]
 
-    # referência costuma ser mês anterior ao "uso"
-    # exemplo: aba 2026, uso=JAN => ref=DEZ do ano anterior
-    ref_year = target_year if use_month_num != 1 else target_year - 1
-    if use_month_num == 1:
-        ref_year = target_year - 1
+    # Regra típica desse quadro:
+    # aba 2026: "Dados do mês de DEZ" -> referência 2025-12
+    # "Para ser usado em JAN" -> competência 2026-01
+    ref_year = sheet_year - 1 if use_month_num == 1 else sheet_year
+    competencia = f"{sheet_year:04d}-{use_month_num:02d}"
+    competencia_referencia = f"{ref_year:04d}-{ref_month_num:02d}"
 
-    competencia = f"{target_year}-{use_month_num:02d}"
-    competencia_ref = f"{ref_year}-{ref_month_num:02d}"
-
-    return CubRow(
-        ano=target_year,
+    return CubMedioRow(
+        ano=sheet_year,
         mes_uso=mes_uso,
         competencia=competencia,
-        mes_referencia=mes_ref,
-        competencia_referencia=competencia_ref,
+        mes_referencia=mes_referencia,
+        competencia_referencia=competencia_referencia,
         cub_medio=cub_medio,
         var_mes=var_mes,
         var_ano=var_ano,
         var_12m=var_12m,
+        xlsx_sha256="",
+        fonte="Sinduscon GF - CUB M2 Residencial Médio (planilha com imagem + OCR)",
     )
 
 
-def main():
-    if "COLE_AQUI" in DOWNLOAD_URL:
-        raise SystemExit("Edite o script e preencha DOWNLOAD_URL com o link direto do XLSX.")
-
-    xlsx_bytes = download_xlsx(DOWNLOAD_URL)
-    img_bytes = extract_first_image_from_sheet(xlsx_bytes, TARGET_SHEET)
-    text = ocr_image_bytes(img_bytes)
-
-    row = parse_cub_ocr(text, target_year=int(TARGET_SHEET))
-
+def write_output_xlsx(row: CubMedioRow) -> Path:
     df = pd.DataFrame([{
         "competencia": row.competencia,
         "competencia_referencia": row.competencia_referencia,
@@ -139,15 +165,47 @@ def main():
         "var_mes_%": row.var_mes,
         "var_ano_%": row.var_ano,
         "var_12m_%": row.var_12m,
-        "fonte": "Sinduscon GF - pseudo-planilha (imagem + OCR)",
+        "xlsx_sha256": row.xlsx_sha256,
+        "fonte": row.fonte,
     }])
 
-    with pd.ExcelWriter(OUTPUT_XLSX, engine="openpyxl") as w:
-        df.to_excel(w, index=False, sheet_name=TARGET_SHEET)
+    out_path = OUTPUT_DIR / f"cub_sc_residencial_medio_{row.ano}_teste.xlsx"
+    with pd.ExcelWriter(out_path, engine="openpyxl") as w:
+        df.to_excel(w, index=False, sheet_name=str(row.ano))
+    return out_path
 
-    print(f"OK: gerado {OUTPUT_XLSX}")
-    print(df.to_string(index=False))
+
+def main() -> int:
+    sheet = TARGET_SHEET.strip()
+    if not sheet.isdigit():
+        print(f"CUB_TARGET_SHEET inválido: {sheet}. Use algo como '2026'.", file=sys.stderr)
+        return 2
+
+    year = int(sheet)
+
+    xlsx_bytes = download_xlsx(DOWNLOAD_URL)
+    xlsx_hash = _sha256_bytes(xlsx_bytes)
+
+    img_bytes = extract_first_image_from_sheet(xlsx_bytes, sheet_name=sheet)
+    ocr_text = ocr_image_bytes(img_bytes)
+
+    row = parse_cub_medio_from_ocr(ocr_text, sheet_year=year)
+    row.xlsx_sha256 = xlsx_hash
+
+    out_path = write_output_xlsx(row)
+
+    # log “operacional”
+    print("OK: extraído CUB médio")
+    print(f"competencia={row.competencia} cub_medio={row.cub_medio} var_mes={row.var_mes} var_ano={row.var_ano} var_12m={row.var_12m}")
+    print(f"OUTPUT_XLSX={out_path.as_posix()}")
+
+    # opcional: salvar OCR para debug em pipeline
+    debug_path = OUTPUT_DIR / f"debug_ocr_{year}.txt"
+    debug_path.write_text(ocr_text, encoding="utf-8")
+    print(f"DEBUG_OCR={debug_path.as_posix()}")
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
