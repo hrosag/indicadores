@@ -2,6 +2,11 @@ name: Ingest CUB SC Médio (manual)
 
 on:
   workflow_dispatch:
+    inputs:
+      sheet:
+        description: "Aba/ano do XLSX (ex.: 2026)"
+        required: true
+        default: "2026"
 
 jobs:
   run:
@@ -16,10 +21,29 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install system dependencies (Tesseract)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+          tesseract --version
+
+      - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
 
-      - name: Run ingest script
+      - name: Run ingest script (generate XLSX)
+        env:
+          CUB_XLSX_URL: ${{ secrets.CUB_XLSX_URL }}
+          CUB_TARGET_SHEET: ${{ github.event.inputs.sheet }}
+          CUB_OUTPUT_DIR: out
         run: |
           python src/app/ingest_cub_sc_medio.py
+          ls -la out
+
+      - name: Upload artifact (XLSX + debug OCR)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cub_sc_medio_output
+          path: |
+            out/*.xlsx
+            out/*.txt
