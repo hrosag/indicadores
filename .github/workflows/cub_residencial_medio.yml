@@ -1,14 +1,15 @@
-name: CUB Residencial Medio (OCR -> XLSX)
+# .github/workflows/cub_residencial_medio.yml
+name: CUB Residencial Médio (captura -> OCR -> XLSX)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "25 9 * * *" # todo dia 09:25 UTC (ajuste)
+    - cron: "30 11 * * *" # 08:30 America/Sao_Paulo ≈ 11:30 UTC (ajuste se quiser)
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -33,11 +34,11 @@ jobs:
         run: |
           python -m playwright install --with-deps chromium
 
-      - name: Run scraper + OCR
+      - name: Run fetch + OCR + XLSX
         run: |
           python src/app/fetch_cub_residencial_medio.py
 
-      - name: Upload artifact (xlsx + evidence)
+      - name: Upload artifact (xlsx + evidências)
         uses: actions/upload-artifact@v4
         with:
           name: cub_residencial_medio
@@ -45,3 +46,4 @@ jobs:
             output/*.xlsx
             output/*.png
             output/*.txt
+            output/*.log
