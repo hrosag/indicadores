@@ -1,39 +1,186 @@
-name: Ingest CUB SC Médio (manual)
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-on:
-  workflow_dispatch:
+import re
+import sys
+import hashlib
+from io import BytesIO
+from dataclasses import dataclass
+from pathlib import Path
 
-jobs:
-  run:
-    runs-on: ubuntu-latest
+import pandas as pd
+import openpyxl
+import pytesseract
+from PIL import Image
+from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+PAGE_URL = "https://sinduscon-fpolis.org.br/servico/cub-mensal/"
+TARGET_SHEET = "2026"  # teste controlado: apenas 2026
+OUTPUT_DIR = Path("out")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-      - name: Install system deps (tesseract)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y tesseract-ocr
-          tesseract --version
+MONTHS = {
+    "JAN": 1, "FEV": 2, "MAR": 3, "ABR": 4, "MAI": 5, "JUN": 6,
+    "JUL": 7, "AGO": 8, "SET": 9, "OUT": 10, "NOV": 11, "DEZ": 12,
+}
 
-      - name: Install Python deps + Playwright Chromium
-        run: |
-          pip install -r requirements.txt
-          python -m playwright install --with-deps chromium
 
-      - name: Run ingest (2026 only)
-        run: |
-          python src/app/ingest_cub_sc_medio.py
-          ls -la out
+@dataclass
+class CubMedioRow:
+    ano: int
+    competencia: str
+    competencia_referencia: str
+    cub_medio: float
+    var_mes: float
+    var_ano: float
+    var_12m: float
+    xlsx_sha256: str
+    fonte: str
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cub_sc_medio_test_output
-          path: out/*
+
+def sha256_bytes(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
+
+
+def br_to_float(s: str) -> float:
+    s = s.strip().replace("%", "")
+    s = s.replace(".", "").replace(",", ".")
+    return float(s)
+
+
+def extract_first_image_from_sheet(xlsx_bytes: bytes, sheet_name: str) -> bytes:
+    wb = openpyxl.load_workbook(BytesIO(xlsx_bytes))
+    if sheet_name not in wb.sheetnames:
+        raise RuntimeError(f"Aba '{sheet_name}' não encontrada. Abas: {wb.sheetnames}")
+
+    ws = wb[sheet_name]
+    imgs = getattr(ws, "_images", [])
+    if not imgs:
+        raise RuntimeError(f"Nenhuma imagem encontrada na aba '{sheet_name}' (ws._images vazio).")
+
+    return imgs[0]._data()
+
+
+def ocr_image_bytes(img_bytes: bytes) -> str:
+    im = Image.open(BytesIO(img_bytes)).convert("L")  # grayscale
+    return pytesseract.image_to_string(im, lang="por")
+
+
+def parse_cub_medio_from_ocr(text: str, sheet_year: int) -> CubMedioRow:
+    t = text.upper()
+
+    months = re.findall(r"\b(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\b", t)
+    if len(months) < 2:
+        raise RuntimeError(f"Não consegui extrair meses (DEZ/JAN etc.). OCR:\n{text}")
+
+    mes_ref, mes_uso = months[0], months[1]
+    use_month_num = MONTHS[mes_uso]
+    ref_month_num = MONTHS[mes_ref]
+
+    nums = re.findall(r"\b\d{1,3}(?:\.\d{3})*,\d{2}%?\b", t.replace(" ", ""))
+    if len(nums) < 4:
+        raise RuntimeError(f"Não consegui extrair 4 números (CUB + 3 %). Achei: {nums}\nOCR:\n{text}")
+
+    cub_medio = br_to_float(nums[0])
+    var_mes = br_to_float(nums[1])
+    var_ano = br_to_float(nums[2])
+    var_12m = br_to_float(nums[3])
+
+    ref_year = sheet_year - 1 if use_month_num == 1 else sheet_year
+    competencia = f"{sheet_year:04d}-{use_month_num:02d}"
+    competencia_ref = f"{ref_year:04d}-{ref_month_num:02d}"
+
+    return CubMedioRow(
+        ano=sheet_year,
+        competencia=competencia,
+        competencia_referencia=competencia_ref,
+        cub_medio=cub_medio,
+        var_mes=var_mes,
+        var_ano=var_ano,
+        var_12m=var_12m,
+        xlsx_sha256="",
+        fonte="Sinduscon GF - CUB M2 Residencial Médio (planilha com imagem; Playwright + OCR)",
+    )
+
+
+def write_output_xlsx(row: CubMedioRow) -> Path:
+    df = pd.DataFrame([{
+        "competencia": row.competencia,
+        "competencia_referencia": row.competencia_referencia,
+        "cub_medio_r$": row.cub_medio,
+        "var_mes_%": row.var_mes,
+        "var_ano_%": row.var_ano,
+        "var_12m_%": row.var_12m,
+        "xlsx_sha256": row.xlsx_sha256,
+        "fonte": row.fonte,
+    }])
+
+    out_path = OUTPUT_DIR / f"cub_sc_residencial_medio_{row.ano}_teste.xlsx"
+    with pd.ExcelWriter(out_path, engine="openpyxl") as w:
+        df.to_excel(w, index=False, sheet_name=str(row.ano))
+    return out_path
+
+
+def download_xlsx_via_clicks() -> bytes:
+    """
+    Fluxo (confirmado):
+      1) 1 - CUB NORMA 2006
+      2) 1 - CUB RESIDENCIAL MÉDIO
+      3) CUB M2 RESIDENCIAL MÉDIO - ANUAL E MENSAL
+      4) Baixar arquivo
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(accept_downloads=True)
+        page = context.new_page()
+
+        page.goto(PAGE_URL, wait_until="networkidle", timeout=120_000)
+
+        try:
+            page.get_by_text("1 - CUB NORMA 2006", exact=False).first.click(timeout=30_000)
+            page.get_by_text("1 - CUB RESIDENCIAL MÉDIO", exact=False).first.click(timeout=30_000)
+            page.get_by_text("CUB M2 RESIDENCIAL MÉDIO", exact=False).first.click(timeout=30_000)
+
+            with page.expect_download(timeout=60_000) as download_info:
+                page.get_by_text("Baixar arquivo", exact=False).first.click(timeout=30_000)
+
+            download = download_info.value
+        except PWTimeout as e:
+            raise RuntimeError("Timeout navegando/clicando na árvore do CUB ou iniciando download.") from e
+
+        tmp_path = OUTPUT_DIR / download.suggested_filename
+        download.save_as(str(tmp_path))
+        xlsx_bytes = tmp_path.read_bytes()
+
+        context.close()
+        browser.close()
+        return xlsx_bytes
+
+
+def main() -> int:
+    year = int(TARGET_SHEET)
+
+    xlsx_bytes = download_xlsx_via_clicks()
+    xlsx_hash = sha256_bytes(xlsx_bytes)
+
+    img_bytes = extract_first_image_from_sheet(xlsx_bytes, TARGET_SHEET)
+    ocr_text = ocr_image_bytes(img_bytes)
+
+    row = parse_cub_medio_from_ocr(ocr_text, sheet_year=year)
+    row.xlsx_sha256 = xlsx_hash
+
+    out_path = write_output_xlsx(row)
+    (OUTPUT_DIR / f"debug_ocr_{year}.txt").write_text(ocr_text, encoding="utf-8")
+
+    print("OK")
+    print(
+        f"competencia={row.competencia} cub_medio={row.cub_medio} "
+        f"var_mes={row.var_mes} var_ano={row.var_ano} var_12m={row.var_12m}"
+    )
+    print(f"OUTPUT_XLSX={out_path.as_posix()}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
