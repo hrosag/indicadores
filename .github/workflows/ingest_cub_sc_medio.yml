@@ -30,7 +30,7 @@ jobs:
       - name: Run ingest (2026 only)
         run: |
           python src/app/ingest_cub_sc_medio.py
-          ls -la out
+          ls -la out || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
