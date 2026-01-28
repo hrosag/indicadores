@@ -35,7 +35,7 @@ jobs:
 
       - name: Run scraper + OCR
         run: |
-          python scripts/fetch_cub_residencial_medio.py
+          python src/app/fetch_cub_residencial_medio.py
 
       - name: Upload artifact (xlsx + evidence)
         uses: actions/upload-artifact@v4
