@@ -63,7 +63,7 @@ def extract_first_image_from_sheet(xlsx_bytes: bytes, sheet_name: str) -> bytes:
 
 
 def ocr_image_bytes(img_bytes: bytes) -> str:
-    im = Image.open(BytesIO(img_bytes)).convert("L")  # grayscale
+    im = Image.open(BytesIO(img_bytes)).convert("L")
     return pytesseract.image_to_string(im, lang="por")
 
 
@@ -122,6 +122,45 @@ def write_output_xlsx(row: CubMedioRow) -> Path:
     return out_path
 
 
+def _try_click_text_in_page_or_frames(page, text: str, timeout_ms: int = 90_000) -> None:
+    """
+    Tenta clicar em texto visível tanto na page quanto em qualquer frame.
+    Faz scroll into view e clica.
+    """
+    # 1) page
+    loc = page.get_by_text(text, exact=False).first
+    try:
+        loc.wait_for(state="visible", timeout=timeout_ms)
+        loc.scroll_into_view_if_needed(timeout=timeout_ms)
+        loc.click(timeout=timeout_ms)
+        return
+    except Exception:
+        pass
+
+    # 2) frames
+    for frame in page.frames:
+        try:
+            floc = frame.get_by_text(text, exact=False).first
+            floc.wait_for(state="visible", timeout=5_000)
+            floc.scroll_into_view_if_needed(timeout=5_000)
+            floc.click(timeout=5_000)
+            return
+        except Exception:
+            continue
+
+    raise RuntimeError(f"Não consegui localizar/clicar no texto: {text}")
+
+
+def _dismiss_cookie_banner(page) -> None:
+    # Banner típico da página: botão "Ok"
+    try:
+        ok = page.get_by_text("Ok", exact=False).first
+        if ok.is_visible():
+            ok.click(timeout=5_000)
+    except Exception:
+        pass
+
+
 def download_xlsx_via_clicks() -> bytes:
     """
     Fluxo (confirmado):
@@ -132,22 +171,64 @@ def download_xlsx_via_clicks() -> bytes:
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(accept_downloads=True)
+        context = browser.new_context(
+            accept_downloads=True,
+            viewport={"width": 1440, "height": 900},
+            user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+        )
         page = context.new_page()
-
-        page.goto(PAGE_URL, wait_until="networkidle", timeout=120_000)
+        page.set_default_timeout(90_000)
 
         try:
-            page.get_by_text("1 - CUB NORMA 2006", exact=False).first.click(timeout=30_000)
-            page.get_by_text("1 - CUB RESIDENCIAL MÉDIO", exact=False).first.click(timeout=30_000)
-            page.get_by_text("CUB M2 RESIDENCIAL MÉDIO", exact=False).first.click(timeout=30_000)
+            page.goto(PAGE_URL, wait_until="domcontentloaded", timeout=120_000)
+            page.wait_for_load_state("networkidle", timeout=120_000)
 
-            with page.expect_download(timeout=60_000) as download_info:
-                page.get_by_text("Baixar arquivo", exact=False).first.click(timeout=30_000)
+            _dismiss_cookie_banner(page)
+
+            # Garante que a área “Tabelas CUB” entrou no viewport (ajuda no lazy-load)
+            try:
+                page.get_by_text("Tabelas CUB", exact=False).first.scroll_into_view_if_needed(timeout=30_000)
+            except Exception:
+                pass
+
+            # Espera a primeira pasta aparecer em page OU em algum frame
+            # (tenta várias vezes rapidamente)
+            for _ in range(6):
+                try:
+                    _try_click_text_in_page_or_frames(page, "1 - CUB NORMA 2006", timeout_ms=15_000)
+                    break
+                except Exception:
+                    page.wait_for_timeout(2_000)
+                    _dismiss_cookie_banner(page)
+            else:
+                raise RuntimeError("A pasta '1 - CUB NORMA 2006' não ficou visível/clicável a tempo.")
+
+            _try_click_text_in_page_or_frames(page, "1 - CUB RESIDENCIAL MÉDIO", timeout_ms=90_000)
+
+            # Item do arquivo (texto visível do cartão)
+            _try_click_text_in_page_or_frames(page, "CUB M2 RESIDENCIAL MÉDIO", timeout_ms=90_000)
+
+            # Download (normalmente aparece menu com “Baixar arquivo”)
+            with page.expect_download(timeout=90_000) as download_info:
+                # às vezes fica dentro de frame, então tenta em ambos
+                try:
+                    _try_click_text_in_page_or_frames(page, "Baixar arquivo", timeout_ms=30_000)
+                except Exception:
+                    _try_click_text_in_page_or_frames(page, "Baixar", timeout_ms=30_000)
 
             download = download_info.value
-        except PWTimeout as e:
-            raise RuntimeError("Timeout navegando/clicando na árvore do CUB ou iniciando download.") from e
+
+        except Exception as e:
+            # dumps para debug no artifact
+            try:
+                page.screenshot(path=str(OUTPUT_DIR / "debug_page.png"), full_page=True)
+            except Exception:
+                pass
+            try:
+                (OUTPUT_DIR / "debug_page.html").write_text(page.content(), encoding="utf-8")
+            except Exception:
+                pass
+            raise
 
         tmp_path = OUTPUT_DIR / download.suggested_filename
         download.save_as(str(tmp_path))
