@@ -1,12 +1,25 @@
+# src/app/fetch_cub_residencial_medio.py
+# Objetivo:
+# 1) abrir https://sinduscon-fpolis.org.br/servico/cub-mensal/
+# 2) navegar pelos 3 cliques
+# 3) capturar automaticamente (via interceptação de rede) a URL final do recurso do Drive:
+#    - preferencialmente uma imagem lh3.googleusercontent.com/... (para OCR)
+#    - ou um link exportável do Google Sheets, se aparecer
+# 4) baixar imagem, OCR, gerar XLSX
+# 5) salvar evidências em output/ (logs + screenshots)
+
+from __future__ import annotations
+
 import os
 import re
-import time
+import json
 from pathlib import Path
+from typing import Optional, List, Dict
 
 import requests
-from openpyxl import Workbook
 from PIL import Image
 import pytesseract
+from openpyxl import Workbook
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
 
 
@@ -16,41 +29,124 @@ OUT_DIR = Path("output")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 IMG_PATH = OUT_DIR / "sheet.png"
-SHOT_PATH = OUT_DIR / "sheet_fallback.png"
-XLSX_PATH = OUT_DIR / "cub_residencial_medio.xlsx"
 OCR_TXT_PATH = OUT_DIR / "ocr.txt"
+XLSX_PATH = OUT_DIR / "cub_residencial_medio.xlsx"
+
+DEBUG_REQ_LOG = OUT_DIR / "admin_ajax_requests.log"
+DEBUG_RES_LOG = OUT_DIR / "admin_ajax_responses.log"
+DEBUG_SCREEN_1 = OUT_DIR / "debug_step1.png"
+DEBUG_SCREEN_2 = OUT_DIR / "debug_step2.png"
+DEBUG_SCREEN_3 = OUT_DIR / "debug_step3.png"
+DEBUG_FINAL = OUT_DIR / "debug_final.png"
 
 
-def _clean(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip())
+COOKIE_SELECTORS = [
+    "button#onetrust-accept-btn-handler",
+    "button:has-text('Aceitar')",
+    "button:has-text('ACEITAR')",
+    "button:has-text('Accept')",
+    "button:has-text('Concordo')",
+    "button:has-text('Entendi')",
+]
 
 
-def _parse_ocr(text: str) -> dict:
+def _append(path: Path, s: str) -> None:
+    path.write_text((path.read_text(encoding="utf-8") if path.exists() else "") + s, encoding="utf-8")
+
+
+def maybe_accept_cookies(page) -> None:
+    for sel in COOKIE_SELECTORS:
+        try:
+            btn = page.locator(sel).first
+            if btn.is_visible():
+                btn.click(timeout=2_000)
+                page.wait_for_timeout(400)
+                return
+        except Exception:
+            continue
+
+
+def safe_click_text(page, text: str, timeout: int = 90_000) -> None:
+    page.wait_for_load_state("domcontentloaded")
+    try:
+        page.wait_for_load_state("networkidle", timeout=15_000)
+    except Exception:
+        pass
+
+    maybe_accept_cookies(page)
+
+    loc = page.get_by_text(text, exact=False).first
+    loc.wait_for(timeout=timeout)
+    try:
+        loc.scroll_into_view_if_needed(timeout=timeout)
+    except Exception:
+        pass
+
+    try:
+        loc.click(timeout=timeout)
+    except PWTimeoutError:
+        # overlay/viewport
+        loc.click(timeout=timeout, force=True)
+
+
+def extract_best_image_url_from_text(blob: str) -> Optional[str]:
     """
-    Extrai do OCR algo como:
-      ano: 2026
-      dados_mes: DEZ
-      usado_em: JAN
-      cub_medio: 3.012,64
-      pct_mes: 0,13%
-      pct_ano: 4,32%
-      pct_12m: 4,32%
+    Procura uma URL de imagem estável para OCR.
+    Preferência: lh3.googleusercontent.com/drive-storage/... (png/jpg/webp ou com parâmetros w=...)
     """
-    t = text.upper()
+    if not blob:
+        return None
 
-    def m(pattern: str):
+    # 1) lh3 googleusercontent (muito comum no viewer)
+    m = re.search(r"(https://lh3\.googleusercontent\.com/drive-storage/[^\s\"'<>]+)", blob)
+    if m:
+        return m.group(1)
+
+    # 2) drive-storage em outros hosts googleusercontent
+    m = re.search(r"(https://[a-z0-9\-]+\.googleusercontent\.com/drive-storage/[^\s\"'<>]+)", blob)
+    if m:
+        return m.group(1)
+
+    # 3) qualquer png/jpg/webp googleusercontent (último recurso)
+    m = re.search(r"(https://[^\s\"'<>]*googleusercontent\.com[^\s\"'<>]*\.(png|jpg|jpeg|webp)[^\s\"'<>]*)", blob, re.I)
+    if m:
+        return m.group(1)
+
+    return None
+
+
+def download_binary(url: str, out: Path, timeout: int = 60) -> None:
+    r = requests.get(url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    out.write_bytes(r.content)
+
+
+def preprocess_for_ocr(img: Image.Image) -> Image.Image:
+    # escala de cinza + threshold leve para tabelas
+    gray = img.convert("L")
+    bw = gray.point(lambda x: 0 if x < 180 else 255, "1")
+    return bw
+
+
+def parse_ocr(text: str) -> Dict[str, Optional[str]]:
+    """
+    Parser simples para os campos principais exibidos no “CUB RESIDENCIAL MÉDIO”.
+    Ajuste conforme o OCR real.
+    """
+    t = (text or "").upper()
+
+    def grab(pattern: str) -> Optional[str]:
         mm = re.search(pattern, t, re.DOTALL)
-        return _clean(mm.group(1)) if mm else None
+        return mm.group(1).strip() if mm else None
 
-    ano = m(r"\b(20\d{2})\b")
-    dados_mes = m(r"DADOS DO M[EÊ]S DE[:\s]*([A-Z]{3})")
-    usado_em = m(r"PARA SER USADO EM[:\s]*([A-Z]{3})")
+    ano = grab(r"\b(20\d{2})\b")
+    dados_mes = grab(r"DADOS DO M[EÊ]S DE[:\s]*([A-Z]{3})")
+    usado_em = grab(r"PARA SER USADO EM[:\s]*([A-Z]{3})")
 
-    # Números BR: 3.012,64
-    cub_medio = m(r"CUB\s*M[ÉE]DIO.*?(\d{1,3}(\.\d{3})*,\d{2})")
-    pct_mes = m(r"%\s*M[ÊE]S.*?(\d{1,3},\d{2}\s*%)")
-    pct_ano = m(r"%\s*ANO.*?(\d{1,3},\d{2}\s*%)")
-    pct_12m = m(r"%\s*12\s*MESES.*?(\d{1,3},\d{2}\s*%)")
+    cub_medio = grab(r"CUB\s*M[ÉE]DIO.*?(\d{1,3}(?:\.\d{3})*,\d{2})")
+    pct_mes = grab(r"%\s*M[ÊE]S.*?(\d{1,3},\d{2}\s*%)")
+    pct_ano = grab(r"%\s*ANO.*?(\d{1,3},\d{2}\s*%)")
+    pct_12m = grab(r"%\s*12\s*MESES.*?(\d{1,3},\d{2}\s*%)")
 
     return {
         "ano": ano,
@@ -63,7 +159,7 @@ def _parse_ocr(text: str) -> dict:
     }
 
 
-def _write_xlsx(parsed: dict, ocr_raw: str):
+def write_xlsx(parsed: Dict[str, Optional[str]], ocr_raw: str) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "cub_residencial_medio"
@@ -73,15 +169,19 @@ def _write_xlsx(parsed: dict, ocr_raw: str):
         ws.append([k, parsed.get(k)])
 
     ws2 = wb.create_sheet("ocr_raw")
-    for line in ocr_raw.splitlines():
+    for line in (ocr_raw or "").splitlines():
         ws2.append([line])
 
     wb.save(XLSX_PATH)
 
 
-def main():
-    # Tesseract path (no Actions vai estar no PATH após apt-get)
-    # Se quiser fixar: pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+def main() -> None:
+    # Reset logs
+    for p in [DEBUG_REQ_LOG, DEBUG_RES_LOG]:
+        if p.exists():
+            p.unlink()
+
+    captured_image_urls: List[str] = []
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -91,82 +191,97 @@ def main():
         )
         page = ctx.new_page()
 
+        # Intercepta requests/responses do admin-ajax e tenta extrair URLs úteis
+        def on_request(req):
+            if "wp-admin/admin-ajax.php" in req.url and req.method == "POST":
+                post = req.post_data or ""
+                _append(DEBUG_REQ_LOG, f"URL: {req.url}\nMETHOD: {req.method}\nPOST_DATA: {post}\n\n")
+
+        def on_response(res):
+            url = res.url
+            try:
+                # Alguns retornos são json, outros html/texto
+                txt = res.text()
+            except Exception:
+                return
+
+            if "wp-admin/admin-ajax.php" in url:
+                _append(DEBUG_RES_LOG, f"URL: {url}\nSTATUS: {res.status}\nBODY_HEAD:\n{txt[:4000]}\n\n")
+
+            # Procura URLs de imagem/drive em qualquer resposta relevante
+            img_url = extract_best_image_url_from_text(txt)
+            if img_url and img_url not in captured_image_urls:
+                captured_image_urls.append(img_url)
+
+        page.on("request", on_request)
+        page.on("response", on_response)
+
         page.goto(URL, wait_until="domcontentloaded", timeout=60_000)
+        maybe_accept_cookies(page)
 
-        # 1) clique: "1 - CUB NORMA 2006"
-        page.get_by_text("1 - CUB NORMA 2006", exact=False).first.click(timeout=30_000)
-
-        # 2) clique: "1 - CUB RESIDENCIAL MÉDIO"
-        page.get_by_text("1 - CUB RESIDENCIAL", exact=False).first.click(timeout=30_000)
-
-        # 3) clique: "CUB M2 RESIDENCIAL MÉDIO - ANUAL" (o card do arquivo)
-        page.get_by_text("CUB M2 RESIDENCIAL", exact=False).first.click(timeout=30_000)
-
-        # Agora abre um “viewer” (geralmente overlay/iframe).
-        # Estratégia A: achar um <img> grande e baixar o src.
-        img_src = None
-
-        # Dá um tempo pro overlay/render carregar
-        page.wait_for_timeout(2_000)
-
-        # Tenta achar imagem mais “óbvia”
+        # Passo 1
         try:
-            # pega qualquer img visível com tamanho razoável
-            imgs = page.locator("img").all()
-            best = None
-            best_area = 0
-            for loc in imgs:
-                try:
-                    box = loc.bounding_box()
-                    if not box:
-                        continue
-                    area = box["width"] * box["height"]
-                    if area > best_area and box["width"] > 600 and box["height"] > 300:
-                        best_area = area
-                        best = loc
-                except Exception:
-                    continue
-
-            if best:
-                src = best.get_attribute("src")
-                if src and ("http" in src or src.startswith("//")):
-                    img_src = src if src.startswith("http") else ("https:" + src)
-
+            safe_click_text(page, "1 - CUB NORMA 2006", timeout=120_000)
         except Exception:
-            img_src = None
+            page.screenshot(path=str(DEBUG_SCREEN_1), full_page=True)
+            raise
+        page.wait_for_timeout(1_000)
 
-        if img_src:
-            r = requests.get(img_src, timeout=60)
-            r.raise_for_status()
-            IMG_PATH.write_bytes(r.content)
-        else:
-            # Estratégia B (fallback): screenshot do page e usa isso como base do OCR
-            page.screenshot(path=str(SHOT_PATH), full_page=True)
-            IMG_PATH.write_bytes(SHOT_PATH.read_bytes())
+        # Passo 2
+        try:
+            safe_click_text(page, "1 - CUB RESIDENCIAL", timeout=120_000)
+        except Exception:
+            page.screenshot(path=str(DEBUG_SCREEN_2), full_page=True)
+            raise
+        page.wait_for_timeout(1_000)
+
+        # Passo 3
+        try:
+            safe_click_text(page, "CUB M2 RESIDENCIAL", timeout=120_000)
+        except Exception:
+            page.screenshot(path=str(DEBUG_SCREEN_3), full_page=True)
+            raise
+
+        # Dá tempo do viewer carregar + interceptar responses com URLs
+        page.wait_for_timeout(6_000)
+        page.screenshot(path=str(DEBUG_FINAL), full_page=True)
 
         browser.close()
 
-    # OCR
+    # Seleciona a melhor URL capturada
+    img_url = None
+    # Preferir lh3 drive-storage
+    for u in captured_image_urls:
+        if "lh3.googleusercontent.com/drive-storage/" in u:
+            img_url = u
+            break
+    if not img_url and captured_image_urls:
+        img_url = captured_image_urls[0]
+
+    if not img_url:
+        raise RuntimeError(
+            "Não consegui capturar URL de imagem do viewer. "
+            "Veja output/admin_ajax_responses.log e output/debug_final.png para ajustar seletores."
+        )
+
+    # Baixa a imagem e faz OCR
+    download_binary(img_url, IMG_PATH)
+
     img = Image.open(IMG_PATH)
+    pre = preprocess_for_ocr(img)
 
-    # Dica: melhorar OCR em tabelas (simples):
-    # - converter pra escala de cinza e aumentar contraste
-    gray = img.convert("L")
-    # um threshold leve
-    bw = gray.point(lambda x: 0 if x < 180 else 255, "1")
+    # Requer: tesseract-ocr-por instalado no runner
+    ocr_text = pytesseract.image_to_string(pre, lang="por")
+    OCR_TXT_PATH.write_text(ocr_text, encoding="utf-8")
 
-    # OCR (português)
-    # No Actions vamos instalar tesseract-ocr-por
-    text = pytesseract.image_to_string(bw, lang="por")
-    OCR_TXT_PATH.write_text(text, encoding="utf-8")
-
-    parsed = _parse_ocr(text)
-    _write_xlsx(parsed, text)
+    parsed = parse_ocr(ocr_text)
+    write_xlsx(parsed, ocr_text)
 
     print("OK")
-    print(f"- image: {IMG_PATH}")
-    print(f"- ocr: {OCR_TXT_PATH}")
-    print(f"- xlsx: {XLSX_PATH}")
+    print(f"image_url={img_url}")
+    print(f"image={IMG_PATH}")
+    print(f"ocr={OCR_TXT_PATH}")
+    print(f"xlsx={XLSX_PATH}")
 
 
 if __name__ == "__main__":
