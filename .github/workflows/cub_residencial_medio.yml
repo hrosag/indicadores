@@ -1,0 +1,47 @@
+name: CUB Residencial Medio (OCR -> XLSX)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "25 9 * * *" # todo dia 09:25 UTC (ajuste)
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system deps (tesseract + por)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-por
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: |
+          python -m playwright install --with-deps chromium
+
+      - name: Run scraper + OCR
+        run: |
+          python scripts/fetch_cub_residencial_medio.py
+
+      - name: Upload artifact (xlsx + evidence)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cub_residencial_medio
+          path: |
+            output/*.xlsx
+            output/*.png
+            output/*.txt
